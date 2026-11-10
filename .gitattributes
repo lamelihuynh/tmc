@@ -1,0 +1,13 @@
+* text=auto eol=lf
+*.png binary
+*.pdf binary
+gradlew.bat text eol=crlf
+
+# Collapse docs assets in GitHub PR diffs (no review comments on them)
+docs/**/*.png  linguist-generated=true -diff
+docs/**/*.jpg  linguist-generated=true -diff
+docs/**/*.jpeg linguist-generated=true -diff
+docs/**/*.gif  linguist-generated=true -diff
+docs/**/*.svg  linguist-generated=true -diff
+docs/**/*.webp linguist-generated=true -diff
+docs/**/*.pdf  linguist-generated=true -diff

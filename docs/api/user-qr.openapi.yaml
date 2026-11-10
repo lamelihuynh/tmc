@@ -1,0 +1,123 @@
+openapi: 3.0.3
+info:
+  title: TMC User/QR
+  version: 0.1.0
+  description: |
+    Thiết bị (khóa công khai), xác thực QR, gói đồng bộ. Danh tính người gọi đến qua header do gateway chèn
+    (`X-Subject`, `X-Roles`, `X-Scope-Factories`, `X-Scope-Gates`); thiếu hoặc sai thì 403.
+    Nguồn mã: `services/user-qr/.../adapter/in/rest`.
+servers:
+  - url: http://localhost:8083
+paths:
+  /self-service/v1/devices:
+    post:
+      summary: Nhân viên đăng ký điện thoại (UC-07). Thiết bị ACTIVE cũ của nhân viên bị thu hồi
+      parameters:
+        - { $ref: "#/components/parameters/Subject" }
+        - { $ref: "#/components/parameters/Roles" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [publicKey]
+              properties:
+                publicKey: { type: string, description: "Base64 của X.509 SubjectPublicKeyInfo, EC P-256. Khóa riêng KHÔNG gửi" }
+      responses:
+        "201":
+          description: Đã đăng ký
+          content: { application/json: { schema: { type: object, properties: { deviceId: { type: string } } } } }
+        "400": { description: Khóa không phải EC P-256 hợp lệ }
+        "403": { description: Chưa xác thực, không phải EMPLOYEE, hoặc đăng ký cho người khác }
+  /self-service/v1/devices/{deviceId}:
+    delete:
+      summary: Nhân viên thu hồi thiết bị của chính mình
+      parameters:
+        - { name: deviceId, in: path, required: true, schema: { type: string } }
+        - { $ref: "#/components/parameters/Subject" }
+        - { $ref: "#/components/parameters/Roles" }
+      responses:
+        "204": { description: Đã thu hồi }
+        "403": { description: Không tồn tại hoặc không phải của bạn (cùng một lỗi) }
+  /hr/v1/employees/{employeeUuid}/devices/revoke:
+    post:
+      summary: HR Staff hoặc System Admin thu hồi thiết bị hiện tại của nhân viên (mất điện thoại, UC-02)
+      parameters:
+        - { name: employeeUuid, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/Subject" }
+        - { $ref: "#/components/parameters/Roles" }
+      responses:
+        "204": { description: Đã thu hồi (hoặc nhân viên không có thiết bị ACTIVE) }
+        "403": { description: Không đủ quyền }
+  /internal/v1/qr/verify:
+    post:
+      summary: "IQRValidation: chỉ đọc. KHÔNG đánh dấu token đã dùng (việc đó thuộc ITokenReservation của gate-station)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties: { token: { type: string } }
+      responses:
+        "200":
+          description: Luôn 200; kết quả nằm ở `valid` và `reason`
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid: { type: boolean }
+                  reason:
+                    type: string
+                    nullable: true
+                    description: "MALFORMED_TOKEN, DEVICE_UNKNOWN, DEVICE_REVOKED, INVALID_SIGNATURE, CLOCK_SKEW_EXCEEDED, QR_EXPIRED"
+                  employeeUuid: { type: string, format: uuid, nullable: true }
+                  deviceId: { type: string, nullable: true }
+                  jti: { type: string, nullable: true }
+                  expiresAt: { type: string, format: date-time, nullable: true }
+                  factories: { type: array, items: { type: string } }
+  /internal/v1/sync-bundle:
+    get:
+      summary: Khóa công khai và thu hồi thay đổi sau `since` (Edge Agent và kiosk dùng để xác thực offline)
+      parameters:
+        - { name: since, in: query, required: false, schema: { type: string, format: date-time } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  generatedAt: { type: string, format: date-time }
+                  deviceKeys:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        deviceId: { type: string }
+                        employeeUuid: { type: string, format: uuid }
+                        publicKeyX509Base64: { type: string }
+                        revoked: { type: boolean }
+components:
+  parameters:
+    Subject: { name: X-Subject, in: header, required: true, schema: { type: string, format: uuid } }
+    Roles: { name: X-Roles, in: header, required: true, schema: { type: string }, example: EMPLOYEE }
+  schemas:
+    QrTokenClaims:
+      description: |
+        Token QR là JWS compact ES256, header `kid` = deviceId. CHỈ các claim dưới đây được chấp nhận;
+        claim khác (tên, số điện thoại...) làm token bị từ chối MALFORMED_TOKEN (ADR-09). Sống tối đa 60 giây, mặc định 30.
+      type: object
+      required: [sub, jti, iat, exp]
+      properties:
+        sub: { type: string, format: uuid, description: UUID nội bộ của nhân viên, phải trùng chủ khóa }
+        jti: { type: string, description: Id token, dùng một lần }
+        iat: { type: integer, description: Epoch giây }
+        exp: { type: integer, description: Epoch giây, exp - iat <= 60 }
+        fac: { type: array, items: { type: string }, description: Nhà máy cho phép (gợi ý, quyết định ở gate-station) }
+        nonce: { type: string }
+x-note: Schema QrTokenClaims không gắn với đường dẫn nào; nó mô tả nội dung token mà kiosk và điện thoại trao đổi.

@@ -1,0 +1,93 @@
+openapi: 3.0.3
+info:
+  title: Turnstile Control System (hệ thống hiện hữu) và bản giả lập
+  version: 0.1.0
+  description: |
+    Phần `/gates/**` theo M1 mục 16.3. gate-station chỉ gọi qua `ITurnstileControlPort` (ACL, ADR-06).
+    Ngân sách thời gian của lời gọi `open`: kết nối 200 ms, đọc 800 ms.
+
+    **Giả định cần xác nhận với API thật** (ghi ở implementation-notes): trường `last_command_key` và
+    `last_command_result` của `GET /gates/{id}/status`. M1 chỉ nêu trạng thái cơ khí và bộ đếm cảm biến.
+    Nếu hãng không cung cấp, đối soát GATE_UNKNOWN trả UNDETERMINED và chuyển bảo vệ xác minh (UC-06).
+    Phần `/admin/fault` chỉ có ở `turnstile-simulator`.
+servers:
+  - url: http://localhost:8090
+paths:
+  /gates/{gateId}/open:
+    post:
+      summary: Mở khóa đúng một lượt theo chiều chỉ định
+      parameters:
+        - { name: gateId, in: path, required: true, schema: { type: string }, description: "Mã cổng phần cứng, ví dụ BD-HW-01" }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string }, description: "cmd-ts-<attempt_id>. Gửi lại cùng khóa thì cổng KHÔNG mở lần hai" }
+        - { name: Authorization, in: header, required: true, schema: { type: string }, description: "Bearer token (kèm mTLS nội bộ)" }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                direction: { type: string, enum: [ENTRY, EXIT] }
+                trigger_source: { type: string, enum: [QR_SCAN, MANUAL_GUARD_OVERRIDE] }
+                operator_id: { type: string, format: uuid, nullable: true, description: "UUID bảo vệ khi MANUAL_GUARD_OVERRIDE" }
+                command_key: { type: string, description: "= attempt_id; để tra lại kết quả lệnh qua /status" }
+      responses:
+        "200":
+          description: "`result=UNLOCKED` mới là đã mở. Bất kỳ giá trị khác coi là lỗi."
+          content: { application/json: { schema: { $ref: "#/components/schemas/OpenResult" } } }
+        "409": { description: "Lỗi cơ khí (ví dụ MECHANICAL_ARM_JAMMED). Chưa mở. Ánh xạ: ERROR" }
+        "503": { description: "Bộ điều khiển ngoại tuyến. Chưa mở. Ánh xạ: ERROR" }
+        "504": { description: "Hết thời gian ở phía trên. KHÔNG biết đã mở hay chưa. Ánh xạ: TIMEOUT (UNKNOWN)" }
+  /gates/{gateId}/close:
+    post:
+      summary: Đóng hoặc hủy lệnh mở (cảnh báo an ninh, bảo trì)
+      parameters:
+        - { name: gateId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+  /gates/{gateId}/status:
+    get:
+      summary: Trạng thái cổng và lệnh gần nhất (dùng để giải quyết TIMEOUT mà KHÔNG gửi lệnh mở mới)
+      parameters:
+        - { name: gateId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state: { type: string, enum: [ONLINE, JAMMED, MAINTENANCE, OFFLINE] }
+                  last_command_key: { type: string, nullable: true }
+                  last_command_result: { type: string, nullable: true, example: UNLOCKED }
+                  pass_count: { type: integer }
+  /admin/fault:
+    post:
+      summary: "Chỉ turnstile-simulator: bật lỗi cho một cổng phần cứng, hoặc `*` cho tất cả"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                gateId: { type: string, example: BD-HW-01 }
+                mode: { type: string, enum: [NONE, JAM, OFFLINE, GATEWAY_TIMEOUT, DELAY_OPENED, DELAY_NOT_OPENED] }
+                delayMs: { type: integer, description: "Cho DELAY_*; đặt lớn hơn 800 để mất phản hồi" }
+      responses:
+        "200": { description: Đã bật }
+    delete:
+      summary: "Chỉ turnstile-simulator: gỡ mọi lỗi"
+      responses:
+        "200": { description: Đã gỡ }
+components:
+  schemas:
+    OpenResult:
+      type: object
+      properties:
+        result: { type: string, example: UNLOCKED }
+        gate_id: { type: string }
+        command_key: { type: string }
+        replayed: { type: boolean, description: "true khi đây là lần gửi lại và cổng không mở thêm" }

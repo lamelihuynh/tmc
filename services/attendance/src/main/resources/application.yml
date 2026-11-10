@@ -1,0 +1,29 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: attendance
+  datasource:
+    url: ${ATTENDANCE_DB_URL:jdbc:postgresql://localhost:5432/attendance_edge}
+    username: ${ATTENDANCE_DB_USER:attendance}
+    password: ${ATTENDANCE_DB_PASSWORD:attendance}
+  flyway:
+    enabled: true
+  rabbitmq:
+    host: ${RABBIT_HOST:localhost}
+    port: ${RABBIT_PORT:5672}
+    username: ${RABBIT_USER:tmc}
+    password: ${RABBIT_PASSWORD:tmc}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+
+tmc:
+  attendance:
+    gate-station-url: ${GATE_STATION_URL:http://localhost:8081}
+    batch-size: 100
+    recovery:
+      reserved-ttl-seconds: 30
+      command-grace-seconds: 10
+    scheduling:
+      enabled: true

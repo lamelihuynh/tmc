@@ -1,0 +1,4 @@
+tmc:
+  attendance:
+    scheduling:
+      enabled: false

@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/lib/api.test.ts","./src/lib/api.ts","./src/lib/identity.ts","./src/pages/hrreconciliation.tsx","./src/pages/securitygates.tsx","./src/pages/supervisionpresence.tsx","./vite.config.ts"],"version":"5.6.3"}

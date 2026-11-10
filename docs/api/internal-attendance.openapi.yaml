@@ -1,0 +1,142 @@
+openapi: 3.0.3
+info:
+  title: TMC Attendance (nội bộ, cùng node biên với gate-station)
+  version: 0.1.0
+  description: |
+    Chỉ gate-station gọi. Không qua gateway công khai; bảo vệ bằng mTLS giữa các service (D-11).
+    **Mọi lệnh idempotent theo attemptId** (ADR-05): gửi lại trả kết quả đã lưu, `duplicate=true`, không tạo thêm gì.
+    Nguồn mã: `services/attendance/.../adapter/in/rest/InternalAttendanceController`.
+servers:
+  - url: http://localhost:8082
+paths:
+  /internal/v1/attempts:
+    post:
+      summary: Ghi lượt hợp lệ ở trạng thái RESERVED (token và slot anti-passback đã giữ ở bên gọi)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AttemptRequest" } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/AttemptView" } } } }
+        "400": { description: Thiếu trường bắt buộc }
+  /internal/v1/attempts/denied:
+    post:
+      summary: Ghi lượt bị từ chối (để gửi lại cùng khóa nhận cùng câu trả lời, và để audit)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/DeniedRequest" } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/AttemptView" } } } }
+  /internal/v1/attempts/{id}/gate-commanded:
+    post:
+      summary: Điểm ghi trước (write-ahead). PHẢI thành công trước khi gửi lệnh mở tới Turnstile
+      parameters: [ { $ref: "#/components/parameters/Id" } ]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/AttemptView" } } } }
+        "404": { description: Lượt không tồn tại }
+  /internal/v1/attempts/{id}/gate-result:
+    post:
+      summary: Áp dụng kết quả đã chuẩn hóa của Turnstile. OPENED thì COMMITTED + công + sự kiện cùng transaction
+      parameters: [ { $ref: "#/components/parameters/Id" } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [result]
+              properties:
+                result: { type: string, enum: [OPENED, ERROR, UNKNOWN] }
+                correlationId: { type: string }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/AttemptView" } } } }
+        "404": { description: Lượt không tồn tại }
+        "409": { description: Chuyển trạng thái không hợp lệ (ví dụ kết quả đến trước khi ghi GATE_COMMANDED) }
+  /internal/v1/attempts/{id}:
+    get:
+      summary: Trạng thái một lượt (gate-station dùng để trả lời retry)
+      parameters: [ { $ref: "#/components/parameters/Id" } ]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/AttemptView" } } } }
+        "404": { description: Chưa có lượt này }
+  /internal/v1/offline-batch:
+    post:
+      summary: Nhập journal offline theo thứ tự journalSeq. KHÔNG bao giờ gửi lệnh mở cổng
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kioskId, records]
+              properties:
+                kioskId: { type: string }
+                records:
+                  type: array
+                  items: { $ref: "#/components/schemas/OfflineItem" }
+      responses:
+        "200":
+          description: Kết quả từng dòng
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    attemptId: { type: string, format: uuid }
+                    outcome: { type: string, enum: [ACCEPTED, DUPLICATE, ANOMALY] }
+                    detail: { type: string, nullable: true }
+components:
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+  schemas:
+    AttemptRequest:
+      type: object
+      required: [attemptId, employeeUuid, gateId, factoryCode, direction, jti, scannedAt]
+      properties:
+        attemptId: { type: string, format: uuid }
+        employeeUuid: { type: string, format: uuid }
+        gateId: { type: string }
+        factoryCode: { type: string }
+        direction: { type: string, enum: [ENTRY, EXIT] }
+        jti: { type: string, description: "Id token, KHÔNG phải token thô" }
+        source: { type: string, enum: [ONLINE, OFFLINE, MANUAL], default: ONLINE }
+        scannedAt: { type: string, format: date-time }
+        correlationId: { type: string }
+    DeniedRequest:
+      type: object
+      required: [attemptId, gateId, factoryCode, scannedAt, reasonCode]
+      properties:
+        attemptId: { type: string, format: uuid }
+        employeeUuid: { type: string, format: uuid, nullable: true }
+        gateId: { type: string }
+        factoryCode: { type: string }
+        direction: { type: string, enum: [ENTRY, EXIT], nullable: true }
+        jti: { type: string, nullable: true }
+        scannedAt: { type: string, format: date-time }
+        reasonCode: { type: string }
+        correlationId: { type: string }
+    OfflineItem:
+      type: object
+      required: [attemptId, gateId, factoryCode, scannedAt, localStatus]
+      properties:
+        attemptId: { type: string, format: uuid }
+        journalSeq: { type: integer, format: int64 }
+        employeeUuid: { type: string, format: uuid }
+        gateId: { type: string }
+        factoryCode: { type: string }
+        direction: { type: string, enum: [ENTRY, EXIT] }
+        jti: { type: string }
+        scannedAt: { type: string, format: date-time }
+        localStatus: { type: string, enum: [OFFLINE_OPENED, OFFLINE_DENIED] }
+        deniedReason: { type: string, nullable: true }
+    AttemptView:
+      type: object
+      properties:
+        attemptId: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [RECEIVED, VALIDATED, RESERVED, GATE_COMMANDED, GATE_OPENED, GATE_FAILED, GATE_UNKNOWN, COMMITTED, DENIED]
+        reasonCode: { type: string, nullable: true }
+        anomaly: { type: string, enum: [TOKEN_REUSED_OFFLINE, ANTI_PASSBACK_OFFLINE], nullable: true }
+        duplicate: { type: boolean }

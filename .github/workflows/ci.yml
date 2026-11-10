@@ -1,0 +1,82 @@
+# CI cho mọi PR và cho main.
+# LƯU Ý: tệp này được viết khi chưa có repo GitHub để chạy thử. Lần chạy đầu tiên là phép kiểm chứng
+# của nó (story D-02). Nếu job đỏ vì lý do hạ tầng, sửa workflow trong PR riêng "ci: ...".
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Format check, build, unit and architecture tests
+        run: ./gradlew spotlessCheck build
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: "**/build/reports/tests/**"
+          retention-days: 7
+
+  portal:
+    name: portal
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/web-portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/web-portal/package-lock.json
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  integration:
+    name: integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # TODO (D-01, D-02): bỏ dòng dưới khi các test tích hợp đã được kiểm chứng xanh trên Docker thật,
+    # rồi đưa "integration" vào danh sách required status checks của nhánh main.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Integration tests (Testcontainers needs the Docker daemon, present on this runner)
+        run: ./gradlew integrationTest
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-reports
+          path: "**/build/reports/tests/**"
+          retention-days: 7

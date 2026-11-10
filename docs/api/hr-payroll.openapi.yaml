@@ -1,0 +1,65 @@
+openapi: 3.0.3
+info:
+  title: HR/Payroll System (hệ thống hiện hữu), hợp đồng theo M1 mục 16.4
+  version: 0.1.0-draft
+  description: |
+    **BẢN NHÁP, chưa hiện thực** (story D-06). Đây là API của hệ thống bên ngoài; TMC là bên gọi
+    qua `IHrPayrollPort` (ADR-07). Điều cần làm trước khi code:
+
+    1. **Thân yêu cầu và phản hồi:** M1 mục 16.4.3 trình bày chúng bằng hình ảnh
+       (`docs/images/page-073-image-02.png`, `page-073-image-03.png`, `page-074-image-02.png`). Đối chiếu và điền vào
+       `components.schemas` bên dưới; các schema hiện chỉ là khung tối thiểu.
+    2. **Sửa lỗi của M1:** M1 ghi header `Authorization` và `Idempotency-key` của yêu cầu HR bằng nội dung sao chép từ
+       API Turnstile (`TURNSTILE_EDGE_API_TOKEN`, "cổng xoay không mở 2 lần"). Dưới đây là phiên bản đúng.
+    3. Xác nhận với HR có hỗ trợ khóa idempotency hoặc tra cứu theo lô không (M1 mục 12.7: "HR timeout không chứng minh
+       hệ thống ngoài chưa ghi dữ liệu").
+servers:
+  - url: https://hr-payroll.tmc.internal
+paths:
+  /api/v1/attendance-batches:
+    post:
+      summary: Gửi một lô chấm công của một nhà máy trong kỳ đối soát
+      parameters:
+        - { name: Authorization, in: header, required: true, schema: { type: string }, description: "Bearer <HR_PAYROLL_API_TOKEN> (kèm mTLS). KHÔNG dùng token của Turnstile" }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string }, description: "batch_id: gửi lại cùng khóa không được nhập dữ liệu trùng ở HR" }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AttendanceBatch" }
+      responses:
+        "200": { description: Tiếp nhận toàn bộ }
+        "207": { description: "Một phần bản ghi lỗi. Chỉ gửi lại phần chưa được tiếp nhận" }
+        "422": { description: "Lỗi dữ liệu; kèm danh sách lỗi theo bản ghi. Không retry mù: sửa dữ liệu trước" }
+  /api/v1/attendance-batches/{batch_id}/status:
+    get:
+      summary: Tra kết quả xử lý một lô khi lời gọi POST trước đó timeout. BẮT BUỘC tra trước khi gửi lại một lô UNKNOWN
+      parameters:
+        - { name: batch_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Trạng thái lô }
+        "404": { description: HR chưa nhận lô này (an toàn để gửi lại với cùng khóa) }
+  /api/v1/attendance-reconciliations:
+    post:
+      summary: Gửi biên bản chốt đối soát tháng (tổng nhân viên, tổng bản ghi khớp) trước 12:00 ngày 1
+      responses:
+        "200": { description: Đã nhận biên bản }
+components:
+  schemas:
+    AttendanceBatch:
+      type: object
+      description: "TODO D-06: điền theo hình M1 mục 16.4.3. Dưới đây là khung tối thiểu, chưa phải hợp đồng."
+      properties:
+        batch_id: { type: string }
+        factory_code: { type: string }
+        period: { type: string, example: "2026-10" }
+        records:
+          type: array
+          items:
+            type: object
+            properties:
+              event_id: { type: string, format: uuid, description: "= attempt_id, khóa chống trùng ở phía HR" }
+              employee_uuid: { type: string, format: uuid }
+              direction: { type: string, enum: [ENTRY, EXIT] }
+              occurred_at: { type: string, format: date-time }

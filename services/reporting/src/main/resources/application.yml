@@ -1,0 +1,10 @@
+server:
+  port: 8084
+spring:
+  application:
+    name: reporting
+  rabbitmq:
+    host: ${RABBIT_HOST:localhost}
+    port: ${RABBIT_PORT:5672}
+    username: ${RABBIT_USER:tmc}
+    password: ${RABBIT_PASSWORD:tmc}

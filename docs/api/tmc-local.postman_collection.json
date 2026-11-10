@@ -1,0 +1,200 @@
+{
+  "info": {
+    "name": "TMC local stack",
+    "description": "Test thủ công các service đang chạy local (profile `local`, in-memory).\n\nCần 4 process: turnstile :8090, user-qr :8083, attendance :8082, gate-station :8081 (`make local-up` hoặc 4 lệnh `make run-*`).\n\nQR token phải được ký bằng khóa riêng của điện thoại, Postman không tự sinh được. Lấy token bằng device-sim rồi dán vào biến `qr_token`:\n\n  DEV=simulators/device-simulator/build/install/device-sim/bin/device-sim\n  $DEV keygen --name phone1 --employee 0192a1c0-0000-7000-8000-000000000001 --home /tmp/phones\n  $DEV register --name phone1 --home /tmp/phones --user-qr http://localhost:8083\n  $DEV token --name phone1 --home /tmp/phones     # hiệu lực 30 giây\n\nIdentity: các header X-Subject, X-Roles, X-Scope-* thay cho API Gateway ở môi trường dev.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "gate", "value": "http://localhost:8081" },
+    { "key": "attendance", "value": "http://localhost:8082" },
+    { "key": "userqr", "value": "http://localhost:8083" },
+    { "key": "turnstile", "value": "http://localhost:8090" },
+    { "key": "employee", "value": "0192a1c0-0000-7000-8000-000000000001" },
+    { "key": "guard", "value": "0192a1c0-0000-7000-8000-00000000b001" },
+    { "key": "qr_token", "value": "DAN_TOKEN_TU_device-sim_VAO_DAY" },
+    { "key": "attempt_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Gate Station (edge, :8081)",
+      "item": [
+        {
+          "name": "Sync bundle (gate catalog, device keys, revocations)",
+          "request": { "method": "GET", "url": "{{gate}}/kiosk/v1/sync-bundle" }
+        },
+        {
+          "name": "Scan QR (kiosk)",
+          "event": [{
+            "listen": "prerequest",
+            "script": { "type": "text/javascript", "exec": [
+              "// Idempotency-Key là attempt id do kiosk sinh; mỗi lần gửi là một lượt quét mới",
+              "pm.variables.set('attempt_id', pm.variables.replaceIn('{{$guid}}'));",
+              "pm.variables.set('now', new Date().toISOString());"
+            ] }
+          }, {
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "const b = pm.response.json();",
+              "pm.collectionVariables.set('attempt_id', b.attempt_id);",
+              "pm.test('outcome: ' + b.outcome + ' reason: ' + b.reason_code, () => true);"
+            ] }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{attempt_id}}" },
+              { "key": "X-Kiosk-Id", "value": "BD-KIOSK-01" },
+              { "key": "X-Correlation-Id", "value": "{{$guid}}" }
+            ],
+            "url": "{{gate}}/kiosk/v1/scans",
+            "body": { "mode": "raw", "raw": "{\n  \"gate_id\": \"BD-GATE-01\",\n  \"qr_token\": \"{{qr_token}}\",\n  \"scanned_at\": \"{{now}}\",\n  \"journal_seq\": 1\n}" }
+          }
+        },
+        {
+          "name": "Scan QR lại cùng token (mong đợi 422 QR_ALREADY_USED)",
+          "event": [{
+            "listen": "prerequest",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.variables.set('attempt_id', pm.variables.replaceIn('{{$guid}}'));",
+              "pm.variables.set('now', new Date().toISOString());"
+            ] }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{attempt_id}}" },
+              { "key": "X-Kiosk-Id", "value": "BD-KIOSK-01" }
+            ],
+            "url": "{{gate}}/kiosk/v1/scans",
+            "body": { "mode": "raw", "raw": "{\n  \"gate_id\": \"BD-GATE-02\",\n  \"qr_token\": \"{{qr_token}}\",\n  \"scanned_at\": \"{{now}}\",\n  \"journal_seq\": 2\n}" }
+          }
+        },
+        {
+          "name": "Heartbeat kiosk",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{gate}}/kiosk/v1/heartbeats",
+            "body": { "mode": "raw", "raw": "{\n  \"kioskId\": \"BD-KIOSK-01\",\n  \"gateId\": \"BD-GATE-01\",\n  \"readerStatus\": \"OK\",\n  \"offlineQueueSize\": 0,\n  \"softwareVersion\": \"0.1.0\"\n}" }
+          }
+        },
+        {
+          "name": "Bảo vệ mở cổng tay (SECURITY_GUARD)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Subject", "value": "{{guard}}" },
+              { "key": "X-Roles", "value": "SECURITY_GUARD" },
+              { "key": "X-Scope-Factories", "value": "BD" },
+              { "key": "X-Scope-Gates", "value": "BD-GATE-01" },
+              { "key": "X-Correlation-Id", "value": "{{$guid}}" }
+            ],
+            "url": "{{gate}}/security/v1/gates/BD-GATE-01/manual-open",
+            "body": { "mode": "raw", "raw": "{\n  \"employee_uuid\": \"0192a1c0-0000-7000-8000-000000000002\",\n  \"direction\": \"ENTRY\",\n  \"reason\": \"QR reader hỏng, đối chiếu thẻ nhân viên\"\n}" }
+          }
+        },
+        {
+          "name": "Mở cổng tay sai cổng (mong đợi 403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Subject", "value": "{{guard}}" },
+              { "key": "X-Roles", "value": "SECURITY_GUARD" },
+              { "key": "X-Scope-Factories", "value": "BD" },
+              { "key": "X-Scope-Gates", "value": "BD-GATE-01" }
+            ],
+            "url": "{{gate}}/security/v1/gates/LA-GATE-01/manual-open",
+            "body": { "mode": "raw", "raw": "{\n  \"employee_uuid\": \"0192a1c0-0000-7000-8000-000000000002\",\n  \"direction\": \"ENTRY\",\n  \"reason\": \"test RBAC\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Attendance (edge, :8082)",
+      "item": [
+        {
+          "name": "Xem attempt theo id",
+          "request": { "method": "GET", "url": "{{attendance}}/internal/v1/attempts/{{attempt_id}}" }
+        }
+      ]
+    },
+    {
+      "name": "3. User/QR (:8083)",
+      "item": [
+        {
+          "name": "Đăng ký thiết bị (public key lấy từ device-sim keygen)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Subject", "value": "{{employee}}" },
+              { "key": "X-Roles", "value": "EMPLOYEE" }
+            ],
+            "url": "{{userqr}}/self-service/v1/devices",
+            "body": { "mode": "raw", "raw": "{\n  \"publicKey\": \"DAN_PUBLIC_KEY_PEM_VAO_DAY\"\n}" }
+          }
+        },
+        {
+          "name": "Verify token trực tiếp (nội bộ)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{userqr}}/internal/v1/qr/verify",
+            "body": { "mode": "raw", "raw": "{\n  \"token\": \"{{qr_token}}\"\n}" }
+          }
+        },
+        {
+          "name": "Sync bundle từ central",
+          "request": { "method": "GET", "url": "{{userqr}}/internal/v1/sync-bundle" }
+        },
+        {
+          "name": "HR thu hồi mọi thiết bị của nhân viên",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Subject", "value": "0192a1c0-0000-7000-8000-00000000c001" },
+              { "key": "X-Roles", "value": "HR_STAFF" }
+            ],
+            "url": "{{userqr}}/hr/v1/employees/{{employee}}/devices/revoke"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Turnstile simulator (:8090)",
+      "item": [
+        {
+          "name": "Trạng thái cổng xoay",
+          "request": { "method": "GET", "url": "{{turnstile}}/gates/BD-HW-01/status" }
+        },
+        {
+          "name": "Giả lỗi: trả lời trễ 5s nhưng có mở (test timeout, ADR-11)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{turnstile}}/admin/fault",
+            "body": { "mode": "raw", "raw": "{\n  \"gateId\": \"BD-HW-03\",\n  \"mode\": \"DELAY_OPENED\",\n  \"delayMs\": 5000\n}" },
+            "description": "mode: NONE | JAM (409) | OFFLINE (503) | GATEWAY_TIMEOUT (504) | DELAY_OPENED | DELAY_NOT_OPENED. Bỏ gateId để áp dụng mọi cổng."
+          }
+        },
+        {
+          "name": "Giả lỗi: kẹt cơ khí (JAM)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{turnstile}}/admin/fault",
+            "body": { "mode": "raw", "raw": "{\n  \"gateId\": \"BD-HW-01\",\n  \"mode\": \"JAM\",\n  \"delayMs\": 0\n}" }
+          }
+        },
+        {
+          "name": "Xoá mọi lỗi giả",
+          "request": { "method": "DELETE", "url": "{{turnstile}}/admin/fault" }
+        }
+      ]
+    }
+  ]
+}

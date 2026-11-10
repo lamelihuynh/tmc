@@ -1,0 +1,91 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #1c2430;
+  background: #f6f7f9;
+}
+body {
+  margin: 0;
+}
+.shell {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 16px;
+}
+header h1 {
+  font-size: 1.25rem;
+  margin: 0 0 8px;
+}
+nav {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+nav a {
+  text-decoration: none;
+  color: #0b57d0;
+  padding: 4px 0;
+}
+nav a.active {
+  font-weight: 600;
+  border-bottom: 2px solid #0b57d0;
+}
+.dev-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  background: #fff4d6;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+label {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-right: 12px;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+input,
+select {
+  padding: 6px 8px;
+  min-width: 160px;
+}
+button {
+  padding: 6px 14px;
+  cursor: pointer;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0 16px;
+}
+th,
+td {
+  border-bottom: 1px solid #d9dde3;
+  padding: 6px 8px;
+  text-align: left;
+  font-size: 0.9rem;
+  word-break: break-all;
+}
+.error {
+  color: #b3261e;
+}
+.ok {
+  color: #1b6e3c;
+}
+.hint {
+  color: #5b6573;
+  font-size: 0.85rem;
+}
+@media (max-width: 600px) {
+  .shell {
+    padding: 12px;
+  }
+  input,
+  select {
+    min-width: 0;
+    width: 100%;
+  }
+}

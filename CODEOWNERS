@@ -1,0 +1,47 @@
+# Mỗi thư mục có một chủ sở hữu (docs/team/WORK-BREAKDOWN.md mục 1).
+#
+# TRƯỚC KHI BẬT "Require review from Code Owners":
+#   thay các handle REPLACE-ME-* bên dưới bằng tài khoản hoặc team GitHub thật,
+#   ví dụ  @tmc-org/team-gate-station  hoặc  @ten-nguoi-1 @ten-nguoi-2
+# Handle không tồn tại sẽ bị GitHub báo là CODEOWNERS không hợp lệ.
+#
+# Dòng sau thắng dòng trước.
+
+# Mặc định: lead Team D (tích hợp)
+*                                        @REPLACE-ME-team-d
+
+# Team A: Gate Station
+/services/gate-station/                  @REPLACE-ME-team-a
+/simulators/turnstile-simulator/         @REPLACE-ME-team-a
+
+# Team B: Attendance
+/services/attendance/                    @REPLACE-ME-team-b
+
+# Team C: User/QR và Identity
+/services/user-qr/                       @REPLACE-ME-team-c
+/services/identity/                      @REPLACE-ME-team-c
+/simulators/device-simulator/            @REPLACE-ME-team-c
+/platform/security/                      @REPLACE-ME-team-c @REPLACE-ME-team-a @REPLACE-ME-team-b @REPLACE-ME-team-d
+
+# Team D: Kiosk, Portal, Central, hạ tầng
+/services/reporting/                     @REPLACE-ME-team-d
+/services/hr-integration/                @REPLACE-ME-team-d
+/services/audit-admin/                   @REPLACE-ME-team-d
+/simulators/kiosk-simulator/             @REPLACE-ME-team-d
+/apps/web-portal/                        @REPLACE-ME-team-d
+/docker/                                 @REPLACE-ME-team-d
+/scripts/                                @REPLACE-ME-team-d
+/.github/                                @REPLACE-ME-team-d
+/Makefile                                @REPLACE-ME-team-d
+
+# Dùng chung: cả bốn team phải duyệt
+/platform/common-kernel/                 @REPLACE-ME-team-a @REPLACE-ME-team-b @REPLACE-ME-team-c @REPLACE-ME-team-d
+/platform/messaging/                     @REPLACE-ME-team-a @REPLACE-ME-team-b @REPLACE-ME-team-c @REPLACE-ME-team-d
+/platform/test-support/                  @REPLACE-ME-team-a @REPLACE-ME-team-b @REPLACE-ME-team-c @REPLACE-ME-team-d
+/docs/api/                               @REPLACE-ME-team-a @REPLACE-ME-team-b @REPLACE-ME-team-c @REPLACE-ME-team-d
+/docs/adr/                               @REPLACE-ME-team-a @REPLACE-ME-team-b @REPLACE-ME-team-c @REPLACE-ME-team-d
+/docs/team/                              @REPLACE-ME-team-d
+
+# Tài liệu theo team
+/docs/architecture/state-machine.md      @REPLACE-ME-team-b
+/docs/architecture/privacy-notes.md      @REPLACE-ME-team-c

@@ -1,0 +1,208 @@
+openapi: 3.0.3
+info:
+  title: TMC Edge Gateway (gate-station)
+  version: 0.1.0
+  description: |
+    API mà kiosk và Guard Console gọi tại biên. Kiosk xác thực bằng mTLS (chưa cấu hình, D-11).
+    `Idempotency-Key` LÀ `attempt_id`: nhận lại cùng khóa trả kết quả đã lưu và không bao giờ mở cổng lần hai (ADR-11).
+    Nguồn mã: `services/gate-station/.../adapter/in/rest`.
+servers:
+  - url: http://localhost:8081
+paths:
+  /kiosk/v1/scans:
+    post:
+      summary: Quét QR, xác thực, mở cổng, ghi nhận
+      operationId: scan
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, format: uuid }, description: "UUID v7 do kiosk sinh = attempt_id" }
+        - { name: X-Kiosk-Id, in: header, required: true, schema: { type: string }, example: BD-KIOSK-01 }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScanRequest" }
+      responses:
+        "200":
+          description: ALLOWED (đã mở và ghi nhận) hoặc UNCONFIRMED (đã mở, bản ghi hoàn tất sau)
+          content: { application/json: { schema: { $ref: "#/components/schemas/ScanResponse" } } }
+        "202":
+          description: |
+            PENDING (đã gửi lệnh, chưa rõ kết quả: không quét lại cùng token) hoặc IN_PROGRESS (request trước của cùng
+            attempt_id còn chạy: hỏi lại cùng khóa).
+          content: { application/json: { schema: { $ref: "#/components/schemas/ScanResponse" } } }
+        "422":
+          description: DENIED, cổng đóng, kèm reason_code
+          content: { application/json: { schema: { $ref: "#/components/schemas/ScanResponse" } } }
+        "400": { description: Sai định dạng (kể cả Idempotency-Key không phải UUID) }
+        "503": { description: Phụ thuộc không khả dụng. Gửi lại cùng khóa hoặc chuyển offline }
+  /kiosk/v1/scans/offline-batch:
+    post:
+      summary: Giao journal offline theo thứ tự journalSeq (không gửi lệnh mở cổng)
+      operationId: offlineBatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OfflineBatch" }
+      responses:
+        "200":
+          description: Kết quả từng dòng. Nhà máy lấy từ danh mục cổng, không tin kiosk
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/OfflineEntryResult" }
+  /kiosk/v1/sync-bundle:
+    get:
+      summary: Danh mục cổng và khóa thiết bị, thu hồi (delta) để kiosk xác thực offline
+      operationId: syncBundle
+      parameters:
+        - { name: since, in: query, required: false, schema: { type: string, format: date-time } }
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/SyncBundle" } } }
+  /kiosk/v1/heartbeats:
+    post:
+      summary: Tín hiệu sức khỏe định kỳ của kiosk (15 giây)
+      operationId: heartbeat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kioskId, gateId]
+              properties:
+                kioskId: { type: string }
+                gateId: { type: string }
+                readerStatus: { type: string }
+                offlineQueueSize: { type: integer }
+                softwareVersion: { type: string }
+      responses:
+        "204": { description: Đã ghi nhận }
+  /security/v1/gates/{gateId}/manual-open:
+    post:
+      summary: Bảo vệ mở cổng thủ công (UC-06). Lý do bắt buộc, ghi audit, không tự tính công
+      operationId: manualOpen
+      parameters:
+        - { name: gateId, in: path, required: true, schema: { type: string } }
+        - { name: X-Subject, in: header, required: true, schema: { type: string, format: uuid } }
+        - { name: X-Roles, in: header, required: true, schema: { type: string }, example: SECURITY_GUARD }
+        - { name: X-Scope-Gates, in: header, required: true, schema: { type: string }, example: "BD-GATE-01" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [employee_uuid, direction, reason]
+              properties:
+                employee_uuid: { type: string, format: uuid }
+                direction: { $ref: "#/components/schemas/Direction" }
+                reason: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: Kết quả (ALLOWED, DENIED, PENDING)
+          content: { application/json: { schema: { $ref: "#/components/schemas/ManualResult" } } }
+        "400": { description: Thiếu lý do hoặc cổng không tồn tại }
+        "403": { description: Không phải bảo vệ, hoặc cổng ngoài phạm vi được giao, hoặc chưa xác thực }
+  /internal/v1/attempts/{attemptId}/gate-observation:
+    get:
+      summary: "Nội bộ: cổng thực sự đã làm gì cho lượt này? (attendance dùng để đối soát GATE_UNKNOWN)"
+      operationId: gateObservation
+      parameters:
+        - { name: attemptId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: gateId, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  observation: { type: string, enum: [OPENED, NOT_OPENED, UNDETERMINED] }
+components:
+  schemas:
+    Direction: { type: string, enum: [ENTRY, EXIT] }
+    ReasonCode:
+      type: string
+      description: Chỉ thêm giá trị, không đổi nghĩa. Client phải chịu được giá trị lạ.
+      enum: [QR_EXPIRED, QR_ALREADY_USED, QR_REVOKED, INVALID_SIGNATURE, MALFORMED_TOKEN, DEVICE_UNKNOWN, DEVICE_REVOKED,
+             CLOCK_SKEW_EXCEEDED, EMPLOYEE_INACTIVE, FACTORY_NOT_PERMITTED, GATE_DIRECTION_MISMATCH, ANTI_PASSBACK_VIOLATION,
+             GATE_IN_MAINTENANCE, GATE_NOT_FOUND, TURNSTILE_TIMEOUT_RETRY_SCAN, GATE_HARDWARE_ERROR, SYSTEM_RETRY, IN_PROGRESS]
+    ScanRequest:
+      type: object
+      required: [gate_id, qr_token, scanned_at]
+      properties:
+        gate_id: { type: string, example: BD-GATE-01 }
+        qr_token: { type: string, description: "JWS compact ES256; khi retry lượt chưa có kết quả, kiosk gửi SHA-256 của token (không lưu token thô)" }
+        scanned_at: { type: string, format: date-time }
+        journal_seq: { type: integer, format: int64 }
+    ScanResponse:
+      type: object
+      properties:
+        attempt_id: { type: string, format: uuid }
+        outcome: { type: string, enum: [ALLOWED, DENIED, PENDING, IN_PROGRESS, UNCONFIRMED] }
+        reason_code: { $ref: "#/components/schemas/ReasonCode" }
+        direction: { $ref: "#/components/schemas/Direction" }
+        duplicate: { type: boolean, description: "true khi đây là lần gửi lại" }
+    OfflineBatch:
+      type: object
+      required: [kioskId, records]
+      properties:
+        kioskId: { type: string }
+        records:
+          type: array
+          items:
+            type: object
+            required: [attemptId, gateId, scannedAt, localStatus]
+            properties:
+              attemptId: { type: string, format: uuid }
+              journalSeq: { type: integer, format: int64 }
+              employeeUuid: { type: string, format: uuid }
+              gateId: { type: string }
+              direction: { $ref: "#/components/schemas/Direction" }
+              jti: { type: string }
+              scannedAt: { type: string, format: date-time }
+              localStatus: { type: string, enum: [OFFLINE_OPENED, OFFLINE_DENIED] }
+              deniedReason: { $ref: "#/components/schemas/ReasonCode" }
+    OfflineEntryResult:
+      type: object
+      properties:
+        attemptId: { type: string, format: uuid }
+        outcome: { type: string, enum: [ACCEPTED, DUPLICATE, ANOMALY, REJECTED] }
+        detail: { type: string, nullable: true }
+    SyncBundle:
+      type: object
+      properties:
+        generatedAt: { type: string, format: date-time }
+        gates:
+          type: array
+          items:
+            type: object
+            properties:
+              gateId: { type: string }
+              factoryCode: { type: string }
+              hardwareGateId: { type: string }
+              mode: { type: string, enum: [ENTRY_ONLY, EXIT_ONLY, BIDIRECTIONAL] }
+              maintenance: { type: boolean }
+        deviceKeys:
+          type: array
+          items:
+            type: object
+            properties:
+              deviceId: { type: string }
+              employeeUuid: { type: string }
+              publicKeyX509Base64: { type: string }
+              revoked: { type: boolean }
+    ManualResult:
+      type: object
+      properties:
+        attemptId: { type: string, format: uuid }
+        outcome: { type: string, enum: [ALLOWED, DENIED, PENDING] }
+        reason: { $ref: "#/components/schemas/ReasonCode" }
+        direction: { $ref: "#/components/schemas/Direction" }
+        duplicate: { type: boolean }

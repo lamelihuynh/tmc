@@ -1,0 +1,72 @@
+asyncapi: 2.6.0
+info:
+  title: TMC AttendanceEvents
+  version: 0.1.0
+  description: |
+    Sự kiện do `attendance` phát qua Transactional Outbox (ADR-04) lên RabbitMQ.
+    Phát **ít nhất một lần**, không đảm bảo thứ tự tuyệt đối. Consumer PHẢI khử trùng theo `(consumer, messageId)`
+    và PHẢI bỏ qua `aggregateVersion` cũ hơn trạng thái hiện có. Chỉ ACK sau khi lưu bền vững kết quả xử lý.
+    `payload` chỉ chứa dữ liệu tối thiểu: UUID nội bộ, KHÔNG token, KHÔNG `jti`, KHÔNG tên (ADR-09).
+    Nguồn mã: `AttendanceEventFactory`, `AmqpEventPublisher`, `platform/common-kernel/EventEnvelope`.
+servers:
+  local:
+    url: localhost:5672
+    protocol: amqp
+    description: RabbitMQ của `docker/docker-compose.yml` (tmc/tmc). Xuất bản dùng publisher confirm.
+defaultContentType: application/json
+channels:
+  "attendance.AccessAttemptRecorded":
+    description: "Lượt hợp lệ đã được lưu (RESERVED). Chưa đủ điều kiện gửi HR. Exchange: tmc.attendance.events (topic)"
+    subscribe:
+      message: { $ref: "#/components/messages/AccessAttemptRecorded" }
+  "attendance.GateResultRecorded":
+    description: "Kết quả cổng đã chuẩn hóa: OPENED, ERROR hoặc UNKNOWN. Giữ nguyên mức chắc chắn của kết quả thiết bị"
+    subscribe:
+      message: { $ref: "#/components/messages/GateResultRecorded" }
+  "attendance.AttendanceConfirmed":
+    description: "Công đã xác nhận (cổng OPENED và đã COMMITTED, không phải lượt thủ công, không bất thường). Đây là dữ liệu duy nhất đủ điều kiện gửi HR"
+    subscribe:
+      message: { $ref: "#/components/messages/AttendanceConfirmed" }
+  "attendance.AttendanceCorrected":
+    description: "CHƯA phát (story B-06). Phiên bản hiệu chỉnh, giữ liên hệ với giao dịch gốc, aggregateVersion tăng"
+    subscribe:
+      message: { $ref: "#/components/messages/AttendanceCorrected" }
+  "attendance.AuditRecorded":
+    description: "Dấu vết bảo mật: từ chối truy cập, thả giữ chỗ, mở thủ công chờ xác minh, bất thường offline"
+    subscribe:
+      message: { $ref: "#/components/messages/AuditRecorded" }
+components:
+  messages:
+    AccessAttemptRecorded: { name: AccessAttemptRecorded, payload: { $ref: "#/components/schemas/Envelope" } }
+    GateResultRecorded: { name: GateResultRecorded, payload: { $ref: "#/components/schemas/Envelope" } }
+    AttendanceConfirmed: { name: AttendanceConfirmed, payload: { $ref: "#/components/schemas/Envelope" } }
+    AttendanceCorrected: { name: AttendanceCorrected, payload: { $ref: "#/components/schemas/Envelope" } }
+    AuditRecorded: { name: AuditRecorded, payload: { $ref: "#/components/schemas/Envelope" } }
+  schemas:
+    Envelope:
+      type: object
+      required: [messageId, eventType, schemaVersion, eventId, aggregateVersion, occurredAt, source, payload]
+      properties:
+        messageId: { type: string, format: uuid, description: "Một thông điệp cụ thể; GIỮ NGUYÊN khi gửi lại" }
+        eventType: { type: string }
+        schemaVersion: { type: integer, example: 1, description: "Tăng khi đổi nghĩa hoặc kiểu trường" }
+        eventId: { type: string, format: uuid, description: "= attempt_id, định danh giao dịch" }
+        aggregateVersion: { type: integer, format: int64, description: "Không áp phiên bản cũ lên trạng thái mới" }
+        occurredAt: { type: string, format: date-time }
+        correlationId: { type: string, nullable: true }
+        source: { type: string, example: attendance-edge }
+        factoryCode: { type: string, nullable: true }
+        gateId: { type: string, nullable: true }
+        payload:
+          type: object
+          description: Tối thiểu cần thiết
+          properties:
+            status: { type: string }
+            source: { type: string, enum: [ONLINE, OFFLINE, MANUAL] }
+            scannedAt: { type: string, format: date-time }
+            employeeUuid: { type: string, format: uuid }
+            direction: { type: string, enum: [ENTRY, EXIT] }
+            reasonCode: { type: string }
+            anomaly: { type: string, enum: [TOKEN_REUSED_OFFLINE, ANTI_PASSBACK_OFFLINE] }
+            gateResult: { type: string, enum: [OPENED, ERROR, UNKNOWN], description: "Chỉ ở GateResultRecorded" }
+            action: { type: string, description: "Chỉ ở AuditRecorded" }

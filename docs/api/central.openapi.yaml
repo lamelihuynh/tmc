@@ -1,0 +1,105 @@
+openapi: 3.0.3
+info:
+  title: "TMC Central (reporting, hr-integration, audit-admin, identity): mức khung"
+  version: 0.1.0
+  description: |
+    Các endpoint đã có trong mã. Danh tính qua header gateway (`X-Subject`, `X-Roles`, `X-Scope-Factories`).
+    Phần còn lại của UC-09, UC-10, UC-11, UC-12 sẽ được thêm cùng với mã (story D-04 đến D-08, C-04 đến C-07).
+servers:
+  - { url: "http://localhost:8084", description: reporting }
+  - { url: "http://localhost:8085", description: hr-integration }
+  - { url: "http://localhost:8086", description: audit-admin }
+  - { url: "http://localhost:8087", description: identity }
+paths:
+  /supervision/v1/presence:
+    get:
+      summary: Ai đang ở trong nhà máy (FR-22). Vai trò PRODUCTION_SUPERVISOR, HR_STAFF, EXECUTIVE trong phạm vi nhà máy
+      parameters:
+        - { name: factory, in: query, required: true, schema: { type: string }, example: BD }
+      responses:
+        "200":
+          description: Danh sách đang ở trong
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    employeeUuid: { type: string, format: uuid }
+                    factoryCode: { type: string }
+                    direction: { type: string }
+                    at: { type: string, format: date-time }
+                    aggregateVersion: { type: integer, format: int64 }
+        "403": { description: Sai vai trò hoặc ngoài phạm vi nhà máy }
+  /admin/v1/hr-sync:
+    get:
+      summary: Trạng thái đồng bộ sang HR/Payroll (FR-30). Chỉ SYSTEM_ADMIN
+      parameters:
+        - { name: status, in: query, required: true, schema: { type: string, enum: [PENDING, IN_PROGRESS, SYNCED, FAILED, RETRY_PENDING, UNKNOWN] } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    eventId: { type: string, format: uuid }
+                    status: { type: string }
+                    attempts: { type: integer }
+                    lastError: { type: string, nullable: true }
+                    updatedAt: { type: string, format: date-time }
+        "403": { description: Không phải SYSTEM_ADMIN }
+  /admin/v1/audit:
+    get:
+      summary: Tra cứu audit (UC-11). Chỉ đọc; KHÔNG có POST, PUT, PATCH, DELETE. Chỉ SYSTEM_ADMIN. Việc tra cứu cũng bị ghi audit
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: actor, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Tối đa 500 dòng, theo thời gian
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    entryId: { type: string, format: uuid }
+                    occurredAt: { type: string, format: date-time }
+                    source: { type: string }
+                    action: { type: string }
+                    actor: { type: string, nullable: true }
+                    target: { type: string }
+                    details: { type: object, additionalProperties: { type: string } }
+        "403": { description: Không phải SYSTEM_ADMIN }
+  /auth/v1/login:
+    post:
+      summary: Đăng nhập nhân sự. CHƯA cấp token (story C-04); chỉ trả quyết định
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string }
+                mfaCode: { type: string, nullable: true, description: Bắt buộc với HR_STAFF và SYSTEM_ADMIN }
+      responses:
+        "200": { description: "GRANTED", content: { application/json: { schema: { $ref: "#/components/schemas/LoginResult" } } } }
+        "401": { description: "DENIED hoặc MFA_REQUIRED. Không tiết lộ tài khoản có tồn tại", content: { application/json: { schema: { $ref: "#/components/schemas/LoginResult" } } } }
+        "423": { description: "LOCKED: khóa 15 phút sau 5 lần sai (NFR-03)", content: { application/json: { schema: { $ref: "#/components/schemas/LoginResult" } } } }
+components:
+  schemas:
+    LoginResult:
+      type: object
+      properties:
+        status: { type: string, enum: [GRANTED, MFA_REQUIRED, DENIED, LOCKED] }

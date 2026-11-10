@@ -1,0 +1,21 @@
+# Only what one factory's edge node needs (document.md section 15.2): PostgreSQL primary + Redis.
+# The broker lives at the Central site, so it is not part of this file.
+#   docker compose -f docker/docker-compose.edge.yml up -d
+name: tmc-edge
+
+services:
+  postgres-edge:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports: ["5432:5432"]
+    volumes:
+      - edge-data:/var/lib/postgresql/data
+      - ./init/edge:/docker-entrypoint-initdb.d:ro
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    command: ["redis-server", "--appendonly", "yes"]
+
+volumes:
+  edge-data:

@@ -1,0 +1,39 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: gate-station
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+tmc:
+  gate:
+    urls:
+      attendance: ${ATTENDANCE_URL:http://localhost:8082}
+      user-qr: ${USERQR_URL:http://localhost:8083}
+    turnstile:
+      mode: ${TURNSTILE_MODE:http}          # http | simulated
+      base-url: ${TURNSTILE_URL:http://localhost:8090}
+      token: ${TURNSTILE_TOKEN:dev-turnstile-token}
+      connect-timeout-ms: 200               # document.md 16.3.1 latency budget
+      read-timeout-ms: 800
+    scan:
+      reservation-ttl-seconds: 10
+      pending-ttl-seconds: 60
+      token-block-seconds: 60
+    # Seed data for the scaffold (see GateProperties for the TODOs that replace these)
+    gates:
+      - { gate-id: BD-GATE-01, factory-code: BD, hardware-gate-id: BD-HW-01, mode: ENTRY_ONLY }
+      - { gate-id: BD-GATE-02, factory-code: BD, hardware-gate-id: BD-HW-02, mode: EXIT_ONLY }
+      - { gate-id: BD-GATE-03, factory-code: BD, hardware-gate-id: BD-HW-03, mode: BIDIRECTIONAL }
+      - { gate-id: LA-GATE-01, factory-code: LA, hardware-gate-id: LA-HW-01, mode: BIDIRECTIONAL }
+    employees:
+      - { employee-uuid: "0192a1c0-0000-7000-8000-000000000001", active: true, factories: [BD, LA] }
+      - { employee-uuid: "0192a1c0-0000-7000-8000-000000000002", active: true, factories: [BD] }
+      - { employee-uuid: "0192a1c0-0000-7000-8000-000000000003", active: false, factories: [BD] }
+      # extra active employees so each scripted demo has its own anti-passback state
+      - { employee-uuid: "0192a1c0-0000-7000-8000-000000000004", active: true, factories: [BD, LA] }
+      - { employee-uuid: "0192a1c0-0000-7000-8000-000000000005", active: true, factories: [BD, LA] }

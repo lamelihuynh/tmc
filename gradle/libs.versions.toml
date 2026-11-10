@@ -1,0 +1,31 @@
+[versions]
+spring-boot = "3.3.5"
+spring-dependency-management = "1.1.6"
+spotless = "6.25.0"
+nimbus-jose = "9.40"
+archunit = "1.3.0"
+testcontainers = "1.20.3"
+picocli = "4.7.6"
+sqlite-jdbc = "3.46.1.3"
+assertj = "3.26.3"
+junit = "5.11.3"
+mockito = "5.14.2"
+jackson = "2.17.2"
+
+[libraries]
+nimbus-jose-jwt = { module = "com.nimbusds:nimbus-jose-jwt", version.ref = "nimbus-jose" }
+archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }
+testcontainers-junit = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
+testcontainers-postgres = { module = "org.testcontainers:postgresql", version.ref = "testcontainers" }
+testcontainers-rabbit = { module = "org.testcontainers:rabbitmq", version.ref = "testcontainers" }
+picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
+sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite-jdbc" }
+assertj = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+mockito-core = { module = "org.mockito:mockito-core", version.ref = "mockito" }
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+
+[plugins]
+spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
+spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "spring-dependency-management" }
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }

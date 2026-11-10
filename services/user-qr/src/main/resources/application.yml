@@ -1,0 +1,15 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: user-qr
+  datasource:
+    url: ${USERQR_DB_URL:jdbc:postgresql://localhost:5433/user_qr}
+    username: ${USERQR_DB_USER:userqr}
+    password: ${USERQR_DB_PASSWORD:userqr}
+
+tmc:
+  qr:
+    clock-skew-seconds: 60
+    max-lifetime-seconds: 60

@@ -1,0 +1,70 @@
+# Infrastructure for the FULL stack (document.md sections 14 and 15). Services themselves run with
+# `./gradlew :services:<name>:bootRun` (see Makefile) so developers get fast restarts and debuggers.
+#
+#   make up        start everything below
+#   make down      stop and keep data
+#   make nuke      stop and delete data
+#
+# Not required for the zero-Docker demo: see docs/runbook/local-setup.md ("local" profile).
+name: tmc
+
+services:
+  postgres-edge:
+    image: postgres:16-alpine
+    container_name: tmc-postgres-edge
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports: ["5432:5432"]
+    volumes:
+      - edge-data:/var/lib/postgresql/data
+      - ./init/edge:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postgres-central:
+    image: postgres:16-alpine
+    container_name: tmc-postgres-central
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports: ["5433:5432"]
+    volumes:
+      - central-data:/var/lib/postgresql/data
+      - ./init/central:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: tmc-redis
+    ports: ["6379:6379"]
+    command: ["redis-server", "--appendonly", "yes"]   # one-time-use state must survive a restart
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: tmc-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: tmc
+      RABBITMQ_DEFAULT_PASS: tmc
+    ports:
+      - "5672:5672"
+      - "15672:15672"   # management UI: http://localhost:15672 (tmc / tmc)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  edge-data:
+  central-data:
