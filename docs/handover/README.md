@@ -51,7 +51,7 @@ Chưa có test tự động, và là việc đầu tiên của các team:
 | Hạng mục | Còn thiếu gì | Story |
 | --- | --- | --- |
 | `RedisTokenReservation`, `RedisAntiPassbackStore` | Mới chạy thử một lượt, chưa có test tranh chấp và khởi động lại | A-01 |
-| `Jdbc*Repository`, `SpringTransactionRunner`, migration Flyway của attendance | Mới chạy thử một lượt, chưa có test tích hợp và rollback | B-01 |
+| `Jdbc*Repository`, `SpringTransactionRunner`, migration Flyway của attendance | `PersistenceAndBrokerIT` (3 test) đã xanh với PostgreSQL thật; còn thiếu test rollback và chạy 3 demo trên PostgreSQL | B-01 |
 | `AmqpEventPublisher` và các listener của consumer | Mới chạy thử một lượt, chưa thử broker chết, gửi trùng, DLQ | B-02, D-03 |
 | `JdbcDeviceKeyRegistry` | Mới chạy thử một lượt, chưa thử hai lệnh đăng ký song song | C-01 |
 | 20 test của `kiosk-simulator` trên Windows | Lỗi khóa file SQLite khi dọn thư mục tạm (macOS và Linux không bị) | D-14 |

@@ -12,6 +12,10 @@ allprojects {
 
 subprojects {
     // Only modules that contain Java sources get the java plugin (see each module's build.gradle.kts).
+    // Spring Boot's dependency management pins Testcontainers to an old release that cannot talk to
+    // Docker 29+. This property is the documented way to override a managed version.
+    extra["testcontainers.version"] = rootProject.libs.versions.testcontainers.get()
+
     plugins.withId("java") {
         extensions.configure<JavaPluginExtension> {
             toolchain { languageVersion.set(JavaLanguageVersion.of(21)) }
