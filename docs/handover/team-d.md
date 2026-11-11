@@ -72,20 +72,21 @@ Chạy hai ứng dụng web: `npm run dev` trong từng thư mục. Hướng d�
 - **Xong khi:** ghi kết quả ("chạy được" hoặc danh sách lỗi và cách sửa) vào `docs/runbook/troubleshooting.md` và báo trong họp đứng ngày 13/11.
 - **Thêm trong đợt này:** database hoặc schema riêng cho Gate Store của Team A (A-04) khi Team A yêu cầu.
 
-### D-02. Hoàn thiện CI (bắt buộc, S đến M, 12 đến 16/11, D2). **Cả nhóm đang chờ.**
+### D-02. Hoàn thiện CI (bắt buộc, S, 12 đến 16/11, D2). **Cả nhóm đang chờ.**
 
 CI đã có sẵn ở `.github/workflows/ci.yml` và chạy trên **mọi lần đẩy lên mọi nhánh** cùng mọi PR vào `main`. Dự án chỉ chạy local nên không có bước triển khai.
 
-| Job | Kiểm gì | Trạng thái |
-| --- | --- | --- |
-| `build` | `./gradlew spotlessCheck build`: định dạng, biên dịch, test đơn vị, luật kiến trúc | Bắt buộc |
-| `employee-app` | `npm ci`, kiểm định dạng, lint, test, build | Bắt buộc |
-| `portal` | Như trên cho `apps/web-portal` | Bắt buộc |
-| `integration` | `./gradlew integrationTest` (Testcontainers) | Chưa chặn hợp nhất |
-| `demo` | Dựng stack local trên runner rồi chạy 3 kịch bản demo | Chưa chặn hợp nhất, **chưa từng chạy trên GitHub** |
+| Job | Kiểm gì |
+| --- | --- |
+| `build` | `./gradlew spotlessCheck build`: định dạng, biên dịch, test đơn vị, luật kiến trúc |
+| `employee-app` | `npm ci`, kiểm định dạng, lint, test, build |
+| `portal` | Như trên cho `apps/web-portal` |
+| `integration` | `./gradlew integrationTest` (Testcontainers) |
+| `demo` | Dựng stack local trên runner rồi chạy 3 kịch bản demo từ đầu đến cuối |
 
-- **Việc còn lại:** xem lần chạy đầu tiên trên GitHub và sửa cho tới khi `build`, `employee-app`, `portal` xanh; sửa job `demo` nếu runner thiếu công cụ (script dùng `lsof` và `curl`); bảo vệ nhánh `main` theo `CONTRIBUTING.md` với ba job bắt buộc là required status checks; thay các `REPLACE-ME-*` trong `CODEOWNERS` bằng tài khoản thật.
-- **Ngày 18/11:** khi A-01, B-01, B-02, C-01 đã có test tích hợp xanh, xóa `continue-on-error` của job `integration` và `demo`, đưa chúng vào required status checks.
+Cả 5 job đều bắt buộc và đã chạy xanh trên GitHub ngày 11/11/2026.
+
+- **Việc còn lại:** bảo vệ nhánh `main` theo `CONTRIBUTING.md`, đưa 5 job vào required status checks; thay các `REPLACE-ME-*` trong `CODEOWNERS` bằng tài khoản thật; khi các team thêm test tích hợp mới (A-01, B-02, C-01, D-03), theo dõi thời gian chạy của job `integration` và tách job nếu vượt 15 phút.
 - **Xong khi:** một PR thử cố ý làm đỏ test thì không hợp nhất được; đẩy thẳng lên `main` bị từ chối.
 
 ### D-14. Sửa test kiosk trên Windows (nên có, S, 12/11, D2)

@@ -1,12 +1,10 @@
 # CI: kiểm tra MỌI lần đẩy lên MỌI nhánh, và mọi PR vào main.
 # Dự án chỉ chạy local nên không có bước triển khai (không có CD, không có môi trường prod).
 #
-# Job bắt buộc (đỏ thì không được hợp nhất):  build, employee-app, portal
-# Job chưa bắt buộc (continue-on-error):        integration, demo
-#   - integration: bật bắt buộc khi A-01, B-01, B-02, C-01 đã có test tích hợp xanh.
-#   - demo: bật bắt buộc sau lần chạy xanh đầu tiên trên runner (chưa được chạy thử trên GitHub).
-# Cách bật: xóa dòng "continue-on-error: true" của job đó, rồi thêm tên job vào
-# "required status checks" của nhánh main (Settings > Branches).
+# Cả 5 job đều bắt buộc: build, employee-app, portal, integration, demo. Một job đỏ thì lần đẩy
+# đó đỏ. Cả 5 đã chạy xanh trên runner ngày 11/11/2026.
+# Việc còn lại của người quản trị repo: thêm 5 tên job vào "required status checks" của nhánh main
+# (Settings > Branches) để PR đỏ không hợp nhất được.
 name: ci
 
 on:
@@ -88,7 +86,6 @@ jobs:
     name: integration
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -112,7 +109,6 @@ jobs:
     name: demo
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
