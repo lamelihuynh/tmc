@@ -29,6 +29,7 @@
 /services/audit-admin/                   @REPLACE-ME-team-d
 /simulators/kiosk-simulator/             @REPLACE-ME-team-d
 /apps/web-portal/                        @REPLACE-ME-team-d
+/apps/employee-app/                      @REPLACE-ME-team-d @REPLACE-ME-team-c
 /docker/                                 @REPLACE-ME-team-d
 /scripts/                                @REPLACE-ME-team-d
 /.github/                                @REPLACE-ME-team-d
