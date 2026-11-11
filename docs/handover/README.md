@@ -11,7 +11,7 @@ Bộ tài liệu này đủ để một team làm việc độc lập: biết m�
 | 1 | [00-he-thong.md](00-he-thong.md): hệ thống làm gì, gồm những phần nào, một lượt quét đi qua đâu | Mọi người | 15 phút |
 | 2 | [02-chay-local.md](02-chay-local.md): cài máy, dựng server local, chạy test, chạy demo, dùng app nhân viên | Mọi người, **làm theo ngay ngày 12/11** | 30 phút, kể cả thời gian chạy |
 | 3 | [01-ke-hoach.md](01-ke-hoach.md): lịch 10 ngày, thứ tự bàn giao giữa các team, phạm vi bị cắt | Mọi người, lead đọc kỹ | 15 phút |
-| 3b | [03-gantt.md](03-gantt.md): biểu đồ Gantt của lịch, kèm bản tương tác [lich-ban-giao.html](lich-ban-giao.html) | Mọi người | 5 phút |
+| 3b | [03-gantt.md](03-gantt.md): biểu đồ Gantt, và [lịch tương tác](https://htmlpreview.github.io/?https://github.com/lamelihuynh/tmc/blob/main/docs/handover/lich-ban-giao.html) (bấm vào từng story để xem chi tiết) | Mọi người | 5 phút |
 | 4 | Tài liệu của team mình: [team-a.md](team-a.md), [team-b.md](team-b.md), [team-c.md](team-c.md), [team-d.md](team-d.md) | Team tương ứng | 20 phút |
 
 ## Bốn team

@@ -74,7 +74,7 @@ Ba ảnh dưới đây chụp khi cả 8 service chạy trên PostgreSQL, Redis 
 
 Chưa có màn hình cho: Ban giám đốc (`EXECUTIVE`, dashboard thuộc D-04 đã thu nhỏ), HR hiệu chỉnh công (B-06 chưa làm), và trang tra cứu nhật ký kiểm toán (API `GET /admin/v1/audit` đã có, chưa có trang). Thanh "DEV" màu vàng là cách chọn danh tính tạm thời khi phát triển, sẽ thay bằng đăng nhập thật.
 
-Lịch làm việc của 4 team: [biểu đồ Gantt](docs/handover/03-gantt.md).
+Lịch làm việc của 4 team: [mở lịch tương tác](https://htmlpreview.github.io/?https://github.com/lamelihuynh/tmc/blob/main/docs/handover/lich-ban-giao.html), hoặc xem [biểu đồ Gantt](docs/handover/03-gantt.md).
 
 ### Chạy trong 4 bước
 
