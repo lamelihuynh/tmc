@@ -2,6 +2,8 @@
 
 Tài liệu này là nguồn sự thật duy nhất về **ai làm gì, theo thứ tự nào, xong khi nào**. Mọi thay đổi phân công phải sửa ở đây trong một PR riêng (`docs(team): ...`) và báo trong buổi họp nhóm.
 
+> **Lịch đã đổi (11/11/2026):** dự án chạy trong 10 ngày làm việc, từ 12/11 đến 25/11/2026. Lịch, thứ tự bàn giao giữa các team và phạm vi bị cắt nằm ở [`docs/handover/01-ke-hoach.md`](../handover/01-ke-hoach.md), và **thay thế mục 3, 6, 7 của tài liệu này**. Mục 1, 4, 5, 8, 9 (quyền sở hữu, backlog, hợp đồng, báo cáo, định nghĩa "xong") vẫn dùng. Bảng "Hiện trạng scaffold" ở mục 2 là số liệu của máy tạo scaffold; số liệu kiểm chứng lại nằm ở [`docs/handover/README.md`](../handover/README.md).
+
 > **Cần điền trước tuần 1:** hạn nộp M2 chính thức (đề bài không ghi ngày). Điền vào bảng mốc ở mục 3, các mốc W1 đến W4 bên dưới là tương đối so với ngày bắt đầu.
 
 ## 1. Bốn team và quyền sở hữu

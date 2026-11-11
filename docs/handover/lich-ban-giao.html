@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lịch bàn giao TMC</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: a planning board. Milestone strip, then one lane per person across 10 working days,
+   then the list of what teams owe each other. Read left to right like a wall calendar. */
+:root {
+  --bg: #f2f4f6;
+  --surface: #ffffff;
+  --ink: #17212b;
+  --muted: #5a6875;
+  --line: #d5dce3;
+  --grid: #e6ebf0;
+  --must: #1f4e79;
+  --must-ink: #ffffff;
+  --should: #dfe9f3;
+  --should-ink: #1f4e79;
+  --wait: #b4530a;
+  --wait-bg: #fdecd6;
+  --mile: #0f6b52;
+  --mile-bg: #dcf2ea;
+  --sel: #b4530a;
+  --font: 'Be Vietnam Pro', system-ui, 'Segoe UI', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151b; --surface: #18212a; --ink: #e6edf3; --muted: #9aa8b5; --line: #2c3945; --grid: #222d38;
+    --must: #7fb4e6; --must-ink: #08141f; --should: #22384d; --should-ink: #a9cdf0;
+    --wait: #f2b267; --wait-bg: #3a2a12; --mile: #6fd3b4; --mile-bg: #12332a; --sel: #f2b267;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151b; --surface: #18212a; --ink: #e6edf3; --muted: #9aa8b5; --line: #2c3945; --grid: #222d38;
+  --must: #7fb4e6; --must-ink: #08141f; --should: #22384d; --should-ink: #a9cdf0;
+  --wait: #f2b267; --wait-bg: #3a2a12; --mile: #6fd3b4; --mile-bg: #12332a; --sel: #f2b267;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--font); }
+.wrap {
+  max-width: 1180px; margin: 0 auto; padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 28px;
+}
+h1, h2, h3 { margin: 0; line-height: 1.25; text-wrap: balance; }
+h1 { font-size: 1.7rem; font-weight: 700; }
+h2 { font-size: 1.15rem; font-weight: 600; }
+h3 { font-size: 1rem; font-weight: 600; }
+p { margin: 0; }
+.lede { color: var(--muted); max-width: 68ch; }
+.id { font-family: var(--mono); font-weight: 600; font-size: 0.86em; }
+section { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+.miles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; list-style: none; margin: 0; padding: 0; }
+.miles li { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.miles .date { font-family: var(--mono); font-size: 0.82rem; color: var(--mile); font-weight: 600; }
+.miles .what { font-size: 0.88rem; color: var(--muted); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 0.85rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 22px; height: 12px; border-radius: 4px; display: inline-block; }
+.sw.must { background: var(--must); }
+.sw.should { background: var(--should); border: 1px solid var(--should-ink); }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--wait); display: inline-block; }
+
+.board-scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.board { display: grid; grid-template-columns: 92px repeat(20, minmax(38px, 1fr)); min-width: 900px; }
+.board > div { min-width: 0; }
+.hd { font-size: 0.78rem; color: var(--muted); padding: 8px 4px 6px; text-align: center; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.hd b { display: block; color: var(--ink); font-size: 0.86rem; }
+.hd.corner { text-align: left; padding-left: 12px; }
+.hd.wk { border-left: 2px dashed var(--line); }
+.lane { padding: 6px 8px 6px 12px; font-size: 0.82rem; color: var(--muted); border-bottom: 1px solid var(--grid); display: flex; align-items: center; }
+.lane.first { border-top: 1px solid var(--line); }
+.lane b { color: var(--ink); margin-right: 4px; }
+.track { grid-column: 2 / -1; display: grid; grid-template-columns: repeat(20, minmax(38px, 1fr)); border-bottom: 1px solid var(--grid); padding: 5px 0;
+  background-image: linear-gradient(to right, var(--grid) 1px, transparent 1px); background-size: 10% 100%; }
+.track.first { border-top: 1px solid var(--line); }
+.bar { margin: 0 2px; border: 0; border-radius: 6px; padding: 5px 6px; font: 500 0.76rem/1.2 var(--font); text-align: left; cursor: pointer;
+  background: var(--must); color: var(--must-ink); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-height: 30px; position: relative; }
+.bar.should { background: var(--should); color: var(--should-ink); box-shadow: inset 0 0 0 1px var(--should-ink); }
+.bar .id { margin-right: 4px; }
+.bar.wait::after { content: ""; position: absolute; top: 3px; right: 3px; width: 8px; height: 8px; border-radius: 50%; background: var(--wait); box-shadow: 0 0 0 2px var(--surface); }
+.bar[aria-pressed="true"] { outline: 3px solid var(--sel); outline-offset: 1px; }
+.bar:focus-visible { outline: 3px solid var(--sel); outline-offset: 1px; }
+
+.detail { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 28px; }
+.detail header { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.detail dl { margin: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.detail dt { font-size: 0.76rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.detail dd { margin: 2px 0 0; }
+.tag { font-size: 0.76rem; border-radius: 999px; padding: 2px 9px; background: var(--should); color: var(--should-ink); font-weight: 600; }
+.tag.wait { background: var(--wait-bg); color: var(--wait); }
+@media (max-width: 640px) { .detail { grid-template-columns: 1fr; } }
+
+.tbl-scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 0.88rem; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--grid); }
+th { font-size: 0.76rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+td.d { font-family: var(--mono); white-space: nowrap; font-variant-numeric: tabular-nums; }
+tr:last-child td { border-bottom: 0; }
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.box { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.box ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; }
+.note { font-size: 0.85rem; color: var(--muted); }
+</style>
+</head>
+<body style="margin:0">
+
+<div class="wrap">
+  <header style="display:flex;flex-direction:column;gap:8px">
+    <h1>Lịch bàn giao TMC</h1>
+    <p class="lede">10 ngày làm việc, từ 12/11 đến 25/11/2026, cho 4 team. Mọi hạn là 23:00 của ngày được ghi. Bấm vào một story để xem nó cần gì, ai đang chờ nó, và phải làm gì nếu thứ nó chờ bị trễ. Chi tiết đầy đủ nằm trong <span class="id">docs/handover/</span> của repo.</p>
+  </header>
+
+  <section aria-labelledby="h-miles">
+    <h2 id="h-miles">Các mốc</h2>
+    <ul class="miles" id="miles"></ul>
+  </section>
+
+  <section aria-labelledby="h-board">
+    <h2 id="h-board">Ai làm gì, ngày nào</h2>
+    <div class="legend">
+      <span><i class="sw must"></i> Bắt buộc</span>
+      <span><i class="sw should"></i> Nên có, cắt trước nếu trễ</span>
+      <span><i class="dot"></i> Team khác đang chờ story này</span>
+    </div>
+    <div class="board-scroll"><div class="board" id="board" role="group" aria-label="Lịch theo người và theo ngày"></div></div>
+    <div class="detail" id="detail" aria-live="polite"></div>
+  </section>
+
+  <section aria-labelledby="h-hand">
+    <h2 id="h-hand">Bàn giao giữa các team</h2>
+    <p class="lede">Mỗi dòng là một thứ team này nợ team kia. Cột cuối là việc bên nhận làm nếu thứ đó chưa tới, để không ai phải ngồi chờ.</p>
+    <div class="tbl-scroll"><table>
+      <thead><tr><th>Hạn (23:00)</th><th>Giao</th><th>Nhận</th><th>Thứ được giao</th><th>Nếu trễ, bên nhận làm gì</th></tr></thead>
+      <tbody id="hand"></tbody>
+    </table></div>
+  </section>
+
+  <section aria-labelledby="h-scope">
+    <h2 id="h-scope">Phạm vi so với kế hoạch 4 tuần cũ</h2>
+    <div class="cols">
+      <div class="box"><h3>Thu nhỏ</h3><ul>
+        <li><span class="id">C-06</span> chỉ áp dụng xác thực JWT cho user-qr</li>
+        <li><span class="id">D-03</span> Team B viết kho thông điệp đã xử lý (B-10), Team D nối vào 3 consumer</li>
+        <li><span class="id">D-04</span> chỉ áp sự kiện hiệu chỉnh lên read model</li>
+        <li><span class="id">D-06</span> không làm scheduler thử lại</li>
+        <li><span class="id">D-07</span> chỉ làm cảnh báo hạn chót ngày 1</li>
+        <li><span class="id">D-08</span> chỉ làm chuỗi băm</li>
+      </ul></div>
+      <div class="box"><h3>Cắt khỏi đợt này</h3><ul>
+        <li><span class="id">A-07</span> cảnh báo trực tiếp cho bảo vệ, <span class="id">A-08</span> callback từ cổng</li>
+        <li><span class="id">B-07</span> xác minh mở thủ công, <span class="id">B-09</span> tham số quản trị</li>
+        <li><span class="id">C-03</span> vòng đời nhân viên, <span class="id">C-07</span> quản lý tài khoản, <span class="id">C-09</span></li>
+        <li><span class="id">D-09</span> kịch bản sự cố tự động, <span class="id">D-10</span> portal đăng nhập thật, <span class="id">D-11</span> Dockerfile</li>
+      </ul><p class="note">Mọi mục bị cắt hoặc thu nhỏ phải có trong phần "Hạn chế" của báo cáo.</p></div>
+      <div class="box"><h3>Thứ tự cắt nếu tới 20/11 còn chậm</h3>
+        <p class="id" style="line-height:1.9">C-08 → A-06 → B-08 → D-13 → C-05 → A-10 → D-07 → D-08 → C-06 → D-04</p>
+        <p class="note">Không cắt: A-01, B-01, B-02, C-01 (kiểm chứng hạ tầng), A-02, A-03 (lỗ hổng anti-passback), D-12 (báo cáo).</p></div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var DAYS = [['N1','Năm','12/11'],['N2','Sáu','13/11'],['N3','Hai','16/11'],['N4','Ba','17/11'],['N5','Tư','18/11'],
+              ['N6','Năm','19/11'],['N7','Sáu','20/11'],['N8','Hai','23/11'],['N9','Ba','24/11'],['N10','Tư','25/11']];
+  var MILES = [
+    ['12/11 · 23:00','M0 Khởi động','Ai cũng chạy được stack local, 3 demo và app nhân viên'],
+    ['13/11 · 23:00','M1 Đóng băng hợp đồng','docs/api khớp mã và có đủ trường, endpoint mới'],
+    ['18/11 · 23:00','M2 Hạ tầng thật','Redis, PostgreSQL, RabbitMQ đã kiểm chứng; JWT đã cấp được'],
+    ['20/11 · 23:00','Bản nháp báo cáo','Mỗi team nộp phần của mình'],
+    ['23/11 · 23:00','M3 Đủ tính năng','Mọi story bắt buộc đã hợp nhất'],
+    ['24/11 · 23:00','M4 Đóng băng mã','Chỉ sửa lỗi; tổng duyệt demo'],
+    ['25/11 · 23:00','M5 Nộp','PDF báo cáo, URL GitHub, tag']
+  ];
+  var LANES = [['A','1','Gate Station'],['A','2','Gate Station'],['B','1','Attendance'],['B','2','Attendance'],
+               ['C','1','QR, Identity'],['C','2','QR, Identity'],['D','1','Kiosk, Central'],['D','2','Kiosk, Central']];
+  // [id, lane, startDay, endDay (exclusive, halves allowed), must?, title, needs, waitedBy, ifLate, done]
+  var S = [
+    ['A-04','A1',2,7,1,'Kho cấu hình cổng bằng PostgreSQL','Database riêng trong compose (Team D)','','Profile local vẫn chạy bằng dữ liệu mẫu trong application.yml','SYSTEM_ADMIN thêm, sửa, đặt bảo trì cổng qua API; đặt bảo trì thì lượt quét kế tiếp bị từ chối ngay'],
+    ['A-10','A1',7,7.5,0,'Danh bạ nhân viên từ gói đồng bộ','C-02: hợp đồng 13/11, dữ liệu thật 19/11','','Dùng JSON mẫu theo hợp đồng; hoặc cắt và giữ danh sách trong application.yml','Vô hiệu hóa nhân viên ở user-qr thì cổng từ chối sau một chu kỳ làm mới'],
+    ['A-06','A1',7.5,8,0,'Trả chiều ra vào khi kiosk gửi lại','B-04 (13/11)','','Hoãn; không chặn việc nào','Lượt gửi lại nhận đủ chiều như lần đầu'],
+    ['A-09','A1',8,9,1,'Kiểm thử tải 800 lượt trong 30 phút','A-01 và B-01 (hạ tầng thật)','Team D cần số đo cho báo cáo','Đo với adapter trong bộ nhớ và ghi rõ điều kiện đo','Bảng p50, p95, p99, tỷ lệ lỗi, kèm lệnh chạy lại'],
+    ['A-05','A2',1,2,0,'Test hợp đồng với turnstile-simulator thật','Không','','','Bao phủ 5 chế độ lỗi và ngưỡng chờ 800 ms'],
+    ['A-01','A2',2,5,1,'Kiểm chứng hai adapter Redis','Docker','A-03, A-09','','Hai luồng cùng giữ một jti chỉ một bên thắng; khóa USED còn sau khi Redis khởi động lại'],
+    ['A-03','A2',5,6.5,1,'Dựng lại anti-passback khi Redis mất dữ liệu','B-05 (13/11), A-01','','Viết theo hợp đồng, test bằng FakeAttendanceGateway','Xóa trạng thái rồi quét ENTRY lần hai ở cổng một chiều vẫn bị từ chối'],
+    ['A-02','A2',6.5,8,1,'Đồng bộ anti-passback sau khi nhập lô offline','Không','','','Vào offline, gửi lô, vào lại online ở cổng một chiều bị từ chối'],
+    ['A-09','A2',8,9,1,'Kiểm thử tải (cùng A1)','A-01 và B-01','Team D','Như trên','Như trên'],
+
+    ['B-05','B1',1,3,1,'API chiều của lượt công gần nhất, và lược đồ AttendanceCorrected','Không','Team A (A-03), Team D (D-04)','','Endpoint last-direction có trong OpenAPI; lược đồ sự kiện có trong AsyncAPI; hợp nhất trước 23:00 ngày 13/11'],
+    ['B-01','B1',3,5,1,'Kiểm chứng tầng JDBC và Flyway','Docker','B-02, A-09','','PersistenceAndBrokerIT xanh; 3 demo qua với PostgreSQL thật; có test rollback'],
+    ['B-06','B1',5,8,1,'Hiệu chỉnh chấm công, phát AttendanceCorrected','Không','Team D (D-04)','','Hiệu chỉnh tạo bản ghi mới liên kết bản gốc, phát sự kiện với phiên bản tăng, có audit'],
+    ['B-04','B2',1,3,0,'Thêm direction và employeeUuid vào AttemptView','Không','Team A (A-06)','','Hai trường mới có trong API và OpenAPI'],
+    ['B-02','B2',3,5.5,1,'Outbox với RabbitMQ thật','Docker','Team D (D-03), Team C (C-08). Nằm trên đường găng','','Dừng broker thì sự kiện còn PENDING; bật lại thì phát đủ, đúng thứ tự, không trùng'],
+    ['B-10','B2',5.5,6,0,'JdbcProcessedMessageStore trong platform/messaging','B-01','Team D (D-03)','','Cùng message_id chèn hai lần thì lần hai báo đã xử lý'],
+    ['B-03','B2',6,8,1,'Hàng đợi bất thường cho HR','Không','','','HR liệt kê được lượt có cờ bất thường; vai trò khác nhận 403'],
+    ['B-08','B2',8,9,0,'Chỉ số vận hành outbox và GATE_UNKNOWN','Không','','','Chỉ số có ở /actuator'],
+
+    ['JWT','C1',1,2,1,'Hợp đồng JWT: claim, JWKS, token mẫu','Không','Cả ba team còn lại','','Tệp OpenAPI của identity trong docs/api, trước 23:00 ngày 13/11'],
+    ['C-04','C1',2,6,1,'Cấp JWT ES256 và JWKS','Không','Team D (D-13), C-06','','Token hết hạn bị từ chối; JWKS xoay khóa được; hai test @Disabled được bật'],
+    ['C-06','C1',6,8,1,'Xác thực JWT ở user-qr','C-04','D-13','','Token sai hoặc hết hạn nhận 401; header X-Subject giả bị bỏ qua ở profile mặc định'],
+    ['C-08','C1',8,9,0,'Audit của user-qr và identity qua outbox','B-02 (18/11)','','Cắt đầu tiên nếu trễ','Đăng ký và thu hồi thiết bị xuất hiện trong nhật ký kiểm toán'],
+    ['C-10','C2',1,2,1,'Mô hình đe dọa QR (làm xen kẽ tới 20/11)','Không','','','Mỗi mối đe dọa trỏ tới một test'],
+    ['EMP','C2',2,3,1,'Hợp đồng employees trong gói đồng bộ','Không','Team A (A-10)','','Trường employees có trong OpenAPI trước 23:00 ngày 13/11'],
+    ['C-01','C2',3,4.5,1,'Kiểm chứng JdbcDeviceKeyRegistry','Docker','','','Hai lệnh đăng ký song song: chỉ mục duy nhất từ chối một bên'],
+    ['C-02','C2',4.5,7,1,'Nhân viên đủ quyền trong gói đồng bộ','Không','Team A (A-10)','','Gói đồng bộ trả employees thay đổi sau mốc; vô hiệu hóa thì thu hồi thiết bị'],
+    ['C-05','C2',7,8,0,'TOTP cho MFA','Không','','Cắt thứ hai nếu trễ','Mã đúng, mã sai, mã lệch một bước thời gian'],
+    ['D-13','C2',8,9,0,'Kiểm phía server khi app nhân viên dùng JWT','C-04, C-06','','Cắt nếu C-04 trễ','Đăng ký thiết bị chạy bằng JWT'],
+
+    ['D-01','D1',1,2,1,'Kiểm chứng docker compose trên macOS và Windows','Docker','Cả nhóm','Test tích hợp dùng Testcontainers, không phụ thuộc compose','Ghi kết quả vào troubleshooting.md'],
+    ['D-06','D1',2,6,1,'Adapter HTTP sang HR/Payroll, tra cứu trước khi gửi lại','Không','','','HR không trả lời thì UNKNOWN; lần sau tra cứu trước, không gửi trùng'],
+    ['D-03','D1',6,7,1,'Consumer thật cho hr-integration','B-02, B-10 (18/11)','','Tự đẩy sự kiện lên RabbitMQ bằng RabbitTemplate; dùng kho trong bộ nhớ trước','Gửi trùng không nhân đôi; thông điệp lỗi vào DLQ'],
+    ['D-07','D1',7,8,1,'Cảnh báo hạn chót ngày 1 hằng tháng','Không','','','Test với đồng hồ giả: cảnh báo lúc 08:00, báo động lúc 12:00'],
+    ['D-12','D1',8,11,1,'Hợp nhất báo cáo và nộp','Bản nháp của 4 team (20/11), số đo A-09 (23/11)','','Phần thiếu ghi "chưa nộp" và báo lead','PDF qua hết release-checklist; nộp 25/11'],
+    ['D-14','D2',1,1.5,0,'Sửa 20 test kiosk lỗi trên Windows','Không','','','Test kiosk xanh trên Windows và macOS'],
+    ['D-02','D2',1.5,3.5,1,'CI trên mọi PR','Không','Cả nhóm','Tự chạy spotlessApply test trước khi mở PR','Build, test, kiến trúc, định dạng, hai ứng dụng web; job tích hợp riêng'],
+    ['D-05','D2',3.5,5,1,'Quy tắc gian lận R4','Không','','','BD rồi LA cách 10 phút sinh cảnh báo'],
+    ['D-08','D2',5,6,1,'Chuỗi băm cho nhật ký kiểm toán','Không','','','Sửa một bản ghi thì kiểm tra chuỗi phát hiện được'],
+    ['D-03','D2',6,8,1,'Consumer thật cho reporting và audit-admin','B-02, B-10 (18/11)','','Như D-03 của D1','Như D-03 của D1'],
+    ['D-04','D2',8,9,1,'Áp sự kiện hiệu chỉnh lên read model; app dùng JWT (D-13)','Lược đồ (13/11), B-06 (20/11)','','Test bằng sự kiện tự tạo theo lược đồ','Bản hiệu chỉnh thay bản gốc trong read model']
+  ];
+  var HAND = [
+    ['12/11','D','A, B, C','docker compose chạy được','Test tích hợp dùng Testcontainers'],
+    ['13/11','B','A','B-05 last-direction, B-04 direction trong AttemptView','Viết theo hợp đồng, test bằng bản giả'],
+    ['13/11','B','D, C','Lược đồ AttendanceCorrected','Tự tạo sự kiện mẫu trong test'],
+    ['13/11','C','A, B, D','Hợp đồng JWT','Tiếp tục dùng header X-Subject'],
+    ['13/11','C','A','Hợp đồng employees trong gói đồng bộ','Dùng JSON mẫu'],
+    ['16/11','D','A, B, C','CI trên mọi PR','Tự chạy kiểm tra trước khi mở PR'],
+    ['18/11','B','D, C','B-02: outbox phát lên RabbitMQ thật','D tự đẩy sự kiện bằng RabbitTemplate; C-08 lùi hoặc cắt'],
+    ['18/11','B','D','B-10: JdbcProcessedMessageStore','Dùng kho trong bộ nhớ, nối bản JDBC sau'],
+    ['18/11','C','D','identity cấp JWT và có JWKS','Cắt D-13'],
+    ['19/11','C','A','C-02: employees thật trong gói đồng bộ','Dùng JSON mẫu, hoặc cắt A-10'],
+    ['20/11','B','D','B-06: sự kiện AttendanceCorrected thật','Chỉ kiểm bằng sự kiện mẫu'],
+    ['20/11','A, B, C, D','D','Bản nháp phần báo cáo','D hợp nhất phần đã có, báo lead phần thiếu'],
+    ['23/11','A','D','Số đo kiểm thử tải','Báo cáo không nêu con số hiệu năng']
+  ];
+
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  var miles = document.getElementById('miles');
+  MILES.forEach(function (m) {
+    var li = el('li'); li.appendChild(el('span', 'date', m[0])); li.appendChild(el('strong', null, m[1])); li.appendChild(el('span', 'what', m[2])); miles.appendChild(li);
+  });
+
+  var board = document.getElementById('board');
+  board.appendChild(el('div', 'hd corner', 'Người'));
+  DAYS.forEach(function (d, i) {
+    var h = el('div', 'hd' + (i === 2 || i === 7 ? ' wk' : ''));
+    h.style.gridColumn = 'span 2';
+    h.appendChild(el('b', null, d[2])); h.appendChild(document.createTextNode('Thứ ' + d[1]));
+    board.appendChild(h);
+  });
+
+  var detail = document.getElementById('detail');
+  var buttons = [];
+  function show(s, btn) {
+    buttons.forEach(function (b) { b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'); });
+    detail.textContent = '';
+    var head = el('header');
+    head.appendChild(el('span', 'id', s[0])); head.appendChild(el('h3', null, s[5]));
+    head.appendChild(el('span', 'tag', s[4] ? 'Bắt buộc' : 'Nên có'));
+    if (s[7]) head.appendChild(el('span', 'tag wait', 'Có team đang chờ'));
+    detail.appendChild(head);
+    function dl(pairs) {
+      var d = el('dl');
+      pairs.forEach(function (p) { if (!p[1]) return; var w = el('div'); w.appendChild(el('dt', null, p[0])); w.appendChild(el('dd', null, p[1])); d.appendChild(w); });
+      return d;
+    }
+    var first = DAYS[Math.floor(s[2]) - 1], last = DAYS[Math.min(10, Math.ceil(s[3]) - 1) - 1];
+    var when = first[2] === last[2] ? first[2] : first[2] + ' đến ' + last[2];
+    detail.appendChild(dl([['Người làm', 'Team ' + s[1][0] + ', người ' + s[1][1]], ['Thời gian', when + ' (hạn 23:00 ngày cuối)'], ['Cần có trước', s[6]], ['Ai đang chờ', s[7]]]));
+    detail.appendChild(dl([['Xong khi', s[9]], ['Nếu thứ nó chờ bị trễ', s[8]]]));
+  }
+
+  var selected = null;
+  LANES.forEach(function (ln, idx) {
+    var key = ln[0] + ln[1], first = ln[1] === '1';
+    var label = el('div', 'lane' + (first && idx ? ' first' : ''));
+    label.appendChild(el('b', null, key)); label.appendChild(document.createTextNode(first ? ln[2] : ''));
+    board.appendChild(label);
+    var track = el('div', 'track' + (first && idx ? ' first' : ''));
+    S.filter(function (s) { return s[1] === key; }).forEach(function (s) {
+      var b = el('button', 'bar' + (s[4] ? '' : ' should') + (s[7] ? ' wait' : ''));
+      b.type = 'button';
+      b.style.gridColumn = ((s[2] - 1) * 2 + 1) + ' / ' + ((s[3] - 1) * 2 + 1);
+      b.title = s[0] + ': ' + s[5];
+      b.setAttribute('aria-pressed', 'false');
+      var show0 = /^[A-D]-/.test(s[0]);
+      if (show0) b.appendChild(el('span', 'id', s[0]));
+      b.appendChild(document.createTextNode(show0 ? s[5] : s[5]));
+      b.addEventListener('click', function () { show(s, b); });
+      buttons.push(b); track.appendChild(b);
+      if (s[0] === 'B-02') selected = [s, b];
+    });
+    board.appendChild(track);
+  });
+  if (selected) show(selected[0], selected[1]);
+
+  var hand = document.getElementById('hand');
+  HAND.forEach(function (h) {
+    var tr = el('tr');
+    h.forEach(function (c, i) { tr.appendChild(el('td', i === 0 ? 'd' : null, c)); });
+    hand.appendChild(tr);
+  });
+})();
+</script>
+</body>
+</html>
