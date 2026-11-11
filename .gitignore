@@ -1,7 +1,7 @@
 # Gradle / Java
 .gradle/
 build/
-out/
+/out/
 *.class
 *.log
 hs_err_pid*
@@ -15,6 +15,7 @@ hs_err_pid*
 # Node
 node_modules/
 apps/web-portal/dist/
+apps/employee-app/dist/
 
 # Local runtime data
 *.db
