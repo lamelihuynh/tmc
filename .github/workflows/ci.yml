@@ -1,15 +1,22 @@
-# CI cho mọi PR và cho main.
-# LƯU Ý: tệp này được viết khi chưa có repo GitHub để chạy thử. Lần chạy đầu tiên là phép kiểm chứng
-# của nó (story D-02). Nếu job đỏ vì lý do hạ tầng, sửa workflow trong PR riêng "ci: ...".
+# CI: kiểm tra MỌI lần đẩy lên MỌI nhánh, và mọi PR vào main.
+# Dự án chỉ chạy local nên không có bước triển khai (không có CD, không có môi trường prod).
+#
+# Job bắt buộc (đỏ thì không được hợp nhất):  build, employee-app, portal
+# Job chưa bắt buộc (continue-on-error):        integration, demo
+#   - integration: bật bắt buộc khi A-01, B-01, B-02, C-01 đã có test tích hợp xanh.
+#   - demo: bật bắt buộc sau lần chạy xanh đầu tiên trên runner (chưa được chạy thử trên GitHub).
+# Cách bật: xóa dòng "continue-on-error: true" của job đó, rồi thêm tên job vào
+# "required status checks" của nhánh main (Settings > Branches).
 name: ci
 
 on:
-  pull_request:
   push:
+  pull_request:
     branches: [main]
 
+# Lần đẩy mới lên cùng một nhánh hủy lần chạy cũ đang dở.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -37,6 +44,26 @@ jobs:
           path: "**/build/reports/tests/**"
           retention-days: 7
 
+  employee-app:
+    name: employee-app
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/employee-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/employee-app/package-lock.json
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
   portal:
     name: portal
     runs-on: ubuntu-latest
@@ -61,8 +88,6 @@ jobs:
     name: integration
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # TODO (D-01, D-02): bỏ dòng dưới khi các test tích hợp đã được kiểm chứng xanh trên Docker thật,
-    # rồi đưa "integration" vào danh sách required status checks của nhánh main.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
@@ -79,4 +104,39 @@ jobs:
         with:
           name: integration-reports
           path: "**/build/reports/tests/**"
+          retention-days: 7
+
+  # Dựng 4 service của edge bằng profile "local" (không cần Docker) rồi chạy 3 kịch bản demo từ đầu
+  # đến cuối: quét hợp lệ, mất mạng, cổng trả lời trễ. Đây là phép thử "sản phẩm có chạy không".
+  demo:
+    name: demo
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Start the local stack
+        run: scripts/dev/local-stack.sh start
+      - name: Demo online
+        run: scripts/demo/online.sh
+      # Trạng thái nằm trong bộ nhớ: khởi động lại để mỗi kịch bản bắt đầu sạch.
+      - name: Demo offline
+        run: |
+          scripts/dev/local-stack.sh restart
+          scripts/demo/offline.sh
+      - name: Demo timeout
+        run: |
+          scripts/dev/local-stack.sh restart
+          scripts/demo/timeout.sh
+      - name: Upload service logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-stack-logs
+          path: .local/*.log
           retention-days: 7
