@@ -36,6 +36,20 @@ public class AuthController {
           case LOCKED -> HttpStatus.LOCKED;
           case DENIED -> HttpStatus.UNAUTHORIZED;
         };
-    return ResponseEntity.status(status).body(Map.of("status", result.status().name()));
+    if (result.status() != IAuthentication.Status.GRANTED) {
+      // Nothing about the account leaks on a refusal: not the subject, not the roles.
+      return ResponseEntity.status(status).body(Map.of("status", result.status().name()));
+    }
+    // DEV ONLY: until the JWT exists (C-04) the caller is told who it is and sends that back as
+    // X-Subject / X-Roles, exactly like the web portal's dev identity bar. Nothing here is signed.
+    return ResponseEntity.status(status)
+        .body(
+            Map.of(
+                "status",
+                result.status().name(),
+                "subject",
+                result.subject().toString(),
+                "roles",
+                result.roles().stream().map(Enum::name).sorted().toList()));
   }
 }

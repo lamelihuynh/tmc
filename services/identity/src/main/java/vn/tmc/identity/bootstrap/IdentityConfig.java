@@ -36,12 +36,27 @@ public class IdentityConfig {
             UUID.fromString("0192a1c0-0000-7000-8000-00000000a002"),
             "admin1",
             Set.of(Role.SYSTEM_ADMIN)));
+    // Employees for the employee app (apps/employee-app). The subject is the same employee UUID
+    // that gate-station seeds in application.yml, so a login here maps to a known employee there.
+    // nv003 is the inactive employee: login works, the gate answers EMPLOYEE_INACTIVE.
+    for (int i = 1; i <= EMPLOYEE_SEEDS; i++) {
+      repo.save(
+          new Account(
+              UUID.fromString("0192a1c0-0000-7000-8000-00000000000" + i),
+              "nv00" + i,
+              Set.of(Role.EMPLOYEE)));
+    }
     return repo;
   }
+
+  private static final int EMPLOYEE_SEEDS = 5;
 
   @Bean
   IPasswordVerifier passwords() {
     var verifier = new Pbkdf2PasswordVerifier();
+    for (int i = 1; i <= EMPLOYEE_SEEDS; i++) {
+      verifier.set("nv00" + i, "dev-only-change-me");
+    }
     verifier.set("supervisor1", "dev-only-change-me");
     verifier.set("admin1", "dev-only-change-me");
     return verifier;
