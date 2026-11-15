@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: TMC Attendance (nội bộ, cùng node biên với gate-station)
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Chỉ gate-station gọi. Không qua gateway công khai; bảo vệ bằng mTLS giữa các service (D-11).
     **Mọi lệnh idempotent theo attemptId** (ADR-05): gửi lại trả kết quả đã lưu, `duplicate=true`, không tạo thêm gì.
@@ -58,6 +58,20 @@ paths:
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/AttemptView" } } } }
         "404": { description: Chưa có lượt này }
+  /internal/v1/employees/{employeeUuid}/last-direction:
+    get:
+      summary: Lượt đã tính công gần nhất của nhân viên trước một thời điểm (dựng lại anti-passback khi Redis mất dữ liệu, A-03/B-05)
+      description: |
+        Chỉ xét bản ghi trong `attendance_transactions` (lượt COMMITTED, không bất thường, không thủ công chờ xác minh).
+        Khi có hiệu chỉnh (B-06), trả theo bản hiệu chỉnh mới nhất.
+      parameters:
+        - { name: employeeUuid, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: before, in: query, required: false, schema: { type: string, format: date-time }, description: "Mặc định: thời điểm hiện tại của server" }
+      responses:
+        "200":
+          description: Có lượt
+          content: { application/json: { schema: { $ref: "#/components/schemas/LastPassView" } } }
+        "404": { description: Nhân viên chưa có lượt nào được tính trước thời điểm đó }
   /internal/v1/offline-batch:
     post:
       summary: Nhập journal offline theo thứ tự journalSeq. KHÔNG bao giờ gửi lệnh mở cổng
@@ -130,10 +144,22 @@ components:
         scannedAt: { type: string, format: date-time }
         localStatus: { type: string, enum: [OFFLINE_OPENED, OFFLINE_DENIED] }
         deniedReason: { type: string, nullable: true }
+    LastPassView:
+      type: object
+      required: [employeeUuid, direction, occurredAt]
+      properties:
+        employeeUuid: { type: string, format: uuid }
+        direction: { type: string, enum: [ENTRY, EXIT] }
+        occurredAt: { type: string, format: date-time }
+        factoryCode: { type: string }
+        gateId: { type: string }
     AttemptView:
       type: object
+      description: Bên đọc PHẢI bỏ qua trường lạ (thêm trường mới không phải thay đổi phá vỡ).
       properties:
         attemptId: { type: string, format: uuid }
+        employeeUuid: { type: string, format: uuid, nullable: true, description: "null khi token không đọc được (lượt bị từ chối sớm)" }
+        direction: { type: string, enum: [ENTRY, EXIT], nullable: true, description: "Để trả lời lượt gửi lại có chiều (A-06)" }
         status:
           type: string
           enum: [RECEIVED, VALIDATED, RESERVED, GATE_COMMANDED, GATE_OPENED, GATE_FAILED, GATE_UNKNOWN, COMMITTED, DENIED]

@@ -1,0 +1,131 @@
+openapi: 3.0.3
+info:
+  title: TMC Identity (đăng nhập, cấp JWT, JWKS)
+  version: 1.0.0
+  description: |
+    Hợp đồng JWT dùng chung cho **mọi** team (ADR-08). Identity là bên duy nhất ký token; các service
+    khác chỉ **kiểm tra** token bằng khóa công khai lấy từ `GET /.well-known/jwks.json`.
+
+    **Token truy cập (access token)**
+    - JWS compact, thuật toán **ES256** (P-256), header `kid` = id khóa trong JWKS, `typ` = `JWT`.
+    - Sống **15 phút** (`exp - iat = 900`, NFR-03). Chưa có refresh token: hết hạn thì đăng nhập lại.
+    - Gửi lên service bằng header `Authorization: Bearer <token>`.
+    - Tập claim cố định, xem `AccessTokenClaims`. Không có tên, email, số điện thoại (ADR-09).
+
+    **Kiểm tra token ở service** (`platform/security`, lớp `JwtPrincipalVerifier`)
+    1. Chữ ký ES256 với khóa có `kid` khớp trong JWKS. Thuật toán khác (kể cả `none`) bị từ chối.
+    2. `iss` = `tmc-identity`, `aud` chứa `tmc-services`.
+    3. `exp` chưa qua, `iat` không ở tương lai; dung sai đồng hồ 30 giây.
+    4. `sub` là UUID, `roles` chỉ chứa giá trị của enum `Role`. Một giá trị lạ là từ chối cả token.
+    Kết quả là `Principal(subject, roles, DataScope)`; service **vẫn** tự gọi `Rbac.require*` (ADR-08).
+
+    **Header dev (`X-Subject`, `X-Roles`, `X-Scope-Factories`, `X-Scope-Gates`)**: chỉ được tin khi
+    service chạy profile dev (`local`, `inmem`) và request **không** có `Authorization`. Có Bearer mà
+    token sai thì là chưa xác thực, không bao giờ rơi về header.
+
+    **Lỗi ở service tài nguyên**: thiếu hoặc sai token, sai vai trò, ngoài phạm vi đều trả
+    `403 {"error":"FORBIDDEN"}` (giữ hành vi hiện có của các service; không tiết lộ lý do).
+
+    **Bộ test dùng chung**: `platform/security` công bố test fixtures (Gradle `java-test-fixtures`):
+    `TestJwtKeys` (một cặp khóa EC P-256 cố định, **chỉ cho test**) và `TestTokens` (tạo token hợp lệ,
+    hết hạn, sai chữ ký...). Dùng: `testImplementation(testFixtures(project(":platform:security")))`.
+
+    Nguồn mã: `services/identity/.../AuthController`, `JwksController`, `NimbusJwtIssuer`;
+    `platform/security/.../jwt/*`.
+servers:
+  - url: http://localhost:8087
+paths:
+  /auth/v1/login:
+    post:
+      summary: Đăng nhập. GRANTED thì trả JWT ký ES256
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string, example: nv001 }
+                password: { type: string, example: dev-only-change-me }
+                mfaCode: { type: string, nullable: true, description: Bắt buộc với HR_STAFF và SYSTEM_ADMIN (NFR-03) }
+      responses:
+        "200":
+          description: GRANTED
+          content: { application/json: { schema: { $ref: "#/components/schemas/LoginGranted" } } }
+        "400":
+          description: Thiếu username hoặc password
+        "401":
+          description: "DENIED hoặc MFA_REQUIRED. Không tiết lộ tài khoản có tồn tại, không trả subject hay roles"
+          content: { application/json: { schema: { $ref: "#/components/schemas/LoginRefused" } } }
+        "423":
+          description: "LOCKED: khóa 15 phút sau 5 lần sai (NFR-03)"
+          content: { application/json: { schema: { $ref: "#/components/schemas/LoginRefused" } } }
+  /.well-known/jwks.json:
+    get:
+      summary: Khóa công khai để kiểm tra token (JWKS, RFC 7517). Không cần xác thực. Service nên cache 5 phút
+      responses:
+        "200":
+          description: JWKS
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Jwks" }
+              example:
+                keys:
+                  - { kty: EC, crv: P-256, kid: "identity-2026-11", use: sig, alg: ES256, x: "...", y: "..." }
+components:
+  schemas:
+    LoginGranted:
+      type: object
+      required: [status, subject, roles, accessToken, tokenType, expiresIn, expiresAt]
+      properties:
+        status: { type: string, enum: [GRANTED] }
+        subject: { type: string, format: uuid, description: "= claim sub. UUID nội bộ, không phải tên đăng nhập" }
+        roles:
+          type: array
+          items: { $ref: "#/components/schemas/Role" }
+        accessToken: { type: string, description: JWS compact ES256 }
+        tokenType: { type: string, enum: [Bearer] }
+        expiresIn: { type: integer, example: 900, description: Giây }
+        expiresAt: { type: string, format: date-time }
+    LoginRefused:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [DENIED, MFA_REQUIRED, LOCKED] }
+    Role:
+      type: string
+      enum: [EMPLOYEE, PRODUCTION_SUPERVISOR, HR_STAFF, SECURITY_GUARD, SYSTEM_ADMIN, EXECUTIVE]
+    AccessTokenClaims:
+      description: |
+        Đúng các claim dưới đây. Service bỏ qua claim chuẩn khác nhưng KHÔNG được dựa vào claim ngoài danh sách.
+        `fac` = `["*"]` nghĩa là mọi nhà máy (`DataScope.all()`).
+      type: object
+      required: [iss, aud, sub, roles, iat, exp, jti]
+      properties:
+        iss: { type: string, enum: [tmc-identity] }
+        aud: { type: string, enum: [tmc-services] }
+        sub: { type: string, format: uuid }
+        roles: { type: array, items: { $ref: "#/components/schemas/Role" } }
+        fac: { type: array, items: { type: string }, example: [BD], description: "Phạm vi nhà máy; [\"*\"] = tất cả; vắng = rỗng" }
+        gates: { type: array, items: { type: string }, example: [BD-GATE-01], description: Phạm vi cổng; vắng = rỗng }
+        iat: { type: integer, description: Epoch giây }
+        exp: { type: integer, description: "Epoch giây, = iat + 900" }
+        jti: { type: string, description: Id token (UUID v7), để audit và thu hồi sau này }
+    Jwks:
+      type: object
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            required: [kty, crv, kid, x, y]
+            properties:
+              kty: { type: string, enum: [EC] }
+              crv: { type: string, enum: [P-256] }
+              kid: { type: string }
+              use: { type: string, enum: [sig] }
+              alg: { type: string, enum: [ES256] }
+              x: { type: string }
+              y: { type: string }

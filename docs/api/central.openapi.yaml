@@ -3,7 +3,8 @@ info:
   title: "TMC Central (reporting, hr-integration, audit-admin, identity): mức khung"
   version: 0.1.0
   description: |
-    Các endpoint đã có trong mã. Danh tính qua header gateway (`X-Subject`, `X-Roles`, `X-Scope-Factories`).
+    Các endpoint đã có trong mã. Danh tính: `Authorization: Bearer <JWT>` do identity cấp (hợp đồng ở
+    `identity.openapi.yaml`); header dev (`X-Subject`, `X-Roles`, `X-Scope-Factories`) chỉ còn dùng ở profile dev.
     Phần còn lại của UC-09, UC-10, UC-11, UC-12 sẽ được thêm cùng với mã (story D-04 đến D-08, C-04 đến C-07).
 servers:
   - { url: "http://localhost:8084", description: reporting }
@@ -81,7 +82,7 @@ paths:
         "403": { description: Không phải SYSTEM_ADMIN }
   /auth/v1/login:
     post:
-      summary: Đăng nhập nhân sự. CHƯA cấp token (story C-04); chỉ trả quyết định
+      summary: "Đăng nhập, cấp JWT ES256 15 phút. Hợp đồng đầy đủ (claim, JWKS, lỗi) ở identity.openapi.yaml"
       requestBody:
         required: true
         content:
@@ -94,12 +95,11 @@ paths:
                 password: { type: string }
                 mfaCode: { type: string, nullable: true, description: Bắt buộc với HR_STAFF và SYSTEM_ADMIN }
       responses:
-        "200": { description: "GRANTED", content: { application/json: { schema: { $ref: "#/components/schemas/LoginResult" } } } }
-        "401": { description: "DENIED hoặc MFA_REQUIRED. Không tiết lộ tài khoản có tồn tại", content: { application/json: { schema: { $ref: "#/components/schemas/LoginResult" } } } }
-        "423": { description: "LOCKED: khóa 15 phút sau 5 lần sai (NFR-03)", content: { application/json: { schema: { $ref: "#/components/schemas/LoginResult" } } } }
-components:
-  schemas:
-    LoginResult:
-      type: object
-      properties:
-        status: { type: string, enum: [GRANTED, MFA_REQUIRED, DENIED, LOCKED] }
+        "200": { description: "GRANTED, có accessToken", content: { application/json: { schema: { $ref: "identity.openapi.yaml#/components/schemas/LoginGranted" } } } }
+        "401": { description: "DENIED hoặc MFA_REQUIRED. Không tiết lộ tài khoản có tồn tại", content: { application/json: { schema: { $ref: "identity.openapi.yaml#/components/schemas/LoginRefused" } } } }
+        "423": { description: "LOCKED: khóa 15 phút sau 5 lần sai (NFR-03)", content: { application/json: { schema: { $ref: "identity.openapi.yaml#/components/schemas/LoginRefused" } } } }
+  /.well-known/jwks.json:
+    get:
+      summary: Khóa công khai của Identity (xem identity.openapi.yaml)
+      responses:
+        "200": { description: JWKS, content: { application/json: { schema: { $ref: "identity.openapi.yaml#/components/schemas/Jwks" } } } }

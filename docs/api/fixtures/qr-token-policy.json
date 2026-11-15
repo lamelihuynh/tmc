@@ -1,0 +1,9 @@
+{
+  "description": "QR token policy shared by every producer and verifier (ADR-12). Producers: apps/employee-app token.ts, simulators/device-simulator TokenSigner. Verifiers: user-qr TokenVerificationPolicy + NimbusTokenCodec, kiosk-simulator OfflineVerifier. QrTokenPolicyContractTest (Java) and token.test.ts (TS) read this file; change it only together with all of them.",
+  "algorithm": "ES256",
+  "allowedClaims": ["sub", "jti", "iat", "exp", "fac", "nonce"],
+  "requiredClaims": ["sub", "jti", "iat", "exp"],
+  "defaultTtlSeconds": 30,
+  "maxLifetimeSeconds": 60,
+  "clockSkewSeconds": 60
+}

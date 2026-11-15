@@ -1,9 +1,14 @@
 asyncapi: 2.6.0
 info:
-  title: TMC AttendanceEvents
-  version: 0.1.0
+  title: TMC AttendanceEvents và AuditRecorded
+  version: 0.2.0
   description: |
     Sự kiện do `attendance` phát qua Transactional Outbox (ADR-04) lên RabbitMQ.
+    **Exchange dùng chung (ADR-15):** một topic exchange bền `tmc.events`. Routing key = `<nguồn>.<eventType>`,
+    nguồn là tên ngắn của service phát: `attendance`, `user-qr`, `identity`, `gate-station`.
+    Ví dụ `attendance.AttendanceConfirmed`, `user-qr.AuditRecorded`. Mỗi consumer có queue riêng và tự bind:
+    reporting `attendance.*`; hr-integration `attendance.AttendanceConfirmed` + `attendance.AttendanceCorrected`;
+    audit-admin `*.AuditRecorded`. Exchange cũ `tmc.attendance.events` không còn dùng.
     Phát **ít nhất một lần**, không đảm bảo thứ tự tuyệt đối. Consumer PHẢI khử trùng theo `(consumer, messageId)`
     và PHẢI bỏ qua `aggregateVersion` cũ hơn trạng thái hiện có. Chỉ ACK sau khi lưu bền vững kết quả xử lý.
     `payload` chỉ chứa dữ liệu tối thiểu: UUID nội bộ, KHÔNG token, KHÔNG `jti`, KHÔNG tên (ADR-09).
@@ -16,7 +21,7 @@ servers:
 defaultContentType: application/json
 channels:
   "attendance.AccessAttemptRecorded":
-    description: "Lượt hợp lệ đã được lưu (RESERVED). Chưa đủ điều kiện gửi HR. Exchange: tmc.attendance.events (topic)"
+    description: "Lượt hợp lệ đã được lưu (RESERVED). Chưa đủ điều kiện gửi HR. Exchange: tmc.events (topic)"
     subscribe:
       message: { $ref: "#/components/messages/AccessAttemptRecorded" }
   "attendance.GateResultRecorded":
@@ -28,11 +33,27 @@ channels:
     subscribe:
       message: { $ref: "#/components/messages/AttendanceConfirmed" }
   "attendance.AttendanceCorrected":
-    description: "CHƯA phát (story B-06). Phiên bản hiệu chỉnh, giữ liên hệ với giao dịch gốc, aggregateVersion tăng"
+    description: |
+      Hiệu chỉnh một công đã xác nhận (HR sửa giờ hoặc chiều, story B-06). Hợp đồng ĐÃ CHỐT; việc phát do B-06 làm
+      (`AttendanceEventFactory.attendanceCorrected` đã có). `eventId` = `attemptId` của giao dịch gốc nên consumer
+      tìm được bản cần thay. `aggregateVersion` = phiên bản của lượt gốc lúc xác nhận + `revision`, luôn lớn hơn
+      mọi sự kiện trước của cùng `eventId`: consumer áp bản có `aggregateVersion` lớn nhất, bỏ bản cũ hơn.
     subscribe:
       message: { $ref: "#/components/messages/AttendanceCorrected" }
   "attendance.AuditRecorded":
     description: "Dấu vết bảo mật: từ chối truy cập, thả giữ chỗ, mở thủ công chờ xác minh, bất thường offline"
+    subscribe:
+      message: { $ref: "#/components/messages/AuditRecorded" }
+  "user-qr.AuditRecorded":
+    description: "Audit của User/QR (đăng ký, thu hồi thiết bị...), C-08. Cùng envelope; source = user-qr"
+    subscribe:
+      message: { $ref: "#/components/messages/AuditRecorded" }
+  "identity.AuditRecorded":
+    description: "Audit đăng nhập (thành công, sai, khóa), C-08. source = identity"
+    subscribe:
+      message: { $ref: "#/components/messages/AuditRecorded" }
+  "gate-station.AuditRecorded":
+    description: "Audit tại cổng (mở thủ công và lý do). source = gate-station"
     subscribe:
       message: { $ref: "#/components/messages/AuditRecorded" }
 components:
@@ -40,7 +61,40 @@ components:
     AccessAttemptRecorded: { name: AccessAttemptRecorded, payload: { $ref: "#/components/schemas/Envelope" } }
     GateResultRecorded: { name: GateResultRecorded, payload: { $ref: "#/components/schemas/Envelope" } }
     AttendanceConfirmed: { name: AttendanceConfirmed, payload: { $ref: "#/components/schemas/Envelope" } }
-    AttendanceCorrected: { name: AttendanceCorrected, payload: { $ref: "#/components/schemas/Envelope" } }
+    AttendanceCorrected:
+      name: AttendanceCorrected
+      payload:
+        allOf:
+          - { $ref: "#/components/schemas/Envelope" }
+          - type: object
+            properties:
+              payload: { $ref: "#/components/schemas/CorrectionPayload" }
+      examples:
+        - name: hieu-chinh-gio-vao
+          payload:
+            messageId: 0192a1c0-0000-7000-8000-00000000c001
+            eventType: AttendanceCorrected
+            schemaVersion: 1
+            eventId: 0192a1c0-0000-7000-8000-0000000000aa
+            aggregateVersion: 6
+            occurredAt: "2026-11-20T09:00:00Z"
+            correlationId: corr-hr-1
+            source: attendance-edge
+            factoryCode: BD
+            gateId: BD-GATE-01
+            payload:
+              status: CORRECTED
+              correctionId: 0192a1c0-0000-7000-8000-00000000c0aa
+              originalAttemptId: 0192a1c0-0000-7000-8000-0000000000aa
+              revision: 1
+              employeeUuid: 0192a1c0-0000-7000-8000-000000000001
+              direction: ENTRY
+              scannedAt: "2026-11-20T06:55:00Z"
+              previousDirection: ENTRY
+              previousScannedAt: "2026-11-20T07:20:00Z"
+              reason: MISSED_SCAN_CONFIRMED_BY_SUPERVISOR
+              correctedBy: 0192a1c0-0000-7000-8000-00000000a003
+              source: ONLINE
     AuditRecorded: { name: AuditRecorded, payload: { $ref: "#/components/schemas/Envelope" } }
   schemas:
     Envelope:
@@ -69,4 +123,25 @@ components:
             reasonCode: { type: string }
             anomaly: { type: string, enum: [TOKEN_REUSED_OFFLINE, ANTI_PASSBACK_OFFLINE] }
             gateResult: { type: string, enum: [OPENED, ERROR, UNKNOWN], description: "Chỉ ở GateResultRecorded" }
-            action: { type: string, description: "Chỉ ở AuditRecorded" }
+            action: { type: string, description: "Chỉ ở AuditRecorded, bắt buộc ở đó (ví dụ DEVICE_REVOKED, LOGIN_LOCKED, MANUAL_OPEN)" }
+            target: { type: string, description: "Chỉ ở AuditRecorded từ user-qr, identity, gate-station: id đối tượng (deviceId, gateId...)" }
+            result: { type: string, description: "Chỉ ở AuditRecorded từ user-qr, identity, gate-station: OK, DENIED... hoặc chi tiết ngắn không PII" }
+    CorrectionPayload:
+      type: object
+      description: |
+        Payload của AttendanceCorrected. Thay thế toàn bộ giá trị của giao dịch gốc (không phải phần chênh).
+        `correctedBy` là UUID nội bộ của người hiệu chỉnh (HR_STAFF), không phải tên (ADR-09).
+      required: [status, correctionId, originalAttemptId, revision, employeeUuid, direction, scannedAt, reason, correctedBy]
+      properties:
+        status: { type: string, enum: [CORRECTED] }
+        correctionId: { type: string, format: uuid, description: "Khóa của hàng attendance_corrections" }
+        originalAttemptId: { type: string, format: uuid, description: "= eventId; nhắc lại cho rõ" }
+        revision: { type: integer, minimum: 1, description: "1, 2, ... theo thứ tự hiệu chỉnh của cùng giao dịch" }
+        employeeUuid: { type: string, format: uuid }
+        direction: { type: string, enum: [ENTRY, EXIT], description: Chiều sau hiệu chỉnh }
+        scannedAt: { type: string, format: date-time, description: Thời điểm sau hiệu chỉnh }
+        previousDirection: { type: string, enum: [ENTRY, EXIT] }
+        previousScannedAt: { type: string, format: date-time }
+        reason: { type: string, description: "Mã lý do, không chứa văn bản tự do có PII" }
+        correctedBy: { type: string, format: uuid }
+        source: { type: string, enum: [ONLINE, OFFLINE, MANUAL], description: Nguồn của lượt gốc }
