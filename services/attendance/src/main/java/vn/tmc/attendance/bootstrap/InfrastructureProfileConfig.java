@@ -16,10 +16,12 @@ import org.springframework.web.client.RestClient;
 import vn.tmc.attendance.adapter.out.http.HttpGateStatusQuery;
 import vn.tmc.attendance.adapter.out.messaging.AmqpEventPublisher;
 import vn.tmc.attendance.adapter.out.persistence.JdbcAttemptRepository;
+import vn.tmc.attendance.adapter.out.persistence.JdbcAttendanceCorrectionRepository;
 import vn.tmc.attendance.adapter.out.persistence.JdbcAttendanceTransactionRepository;
 import vn.tmc.attendance.adapter.out.persistence.JdbcOutboxRepository;
 import vn.tmc.attendance.adapter.out.persistence.SpringTransactionRunner;
 import vn.tmc.attendance.application.port.out.IAttemptRepository;
+import vn.tmc.attendance.application.port.out.IAttendanceCorrectionRepository;
 import vn.tmc.attendance.application.port.out.IAttendanceTransactionRepository;
 import vn.tmc.attendance.application.port.out.IGateStatusQuery;
 import vn.tmc.attendance.application.port.out.IOutboxRepository;
@@ -42,6 +44,12 @@ public class InfrastructureProfileConfig {
   @Bean
   IAttendanceTransactionRepository transactions(JdbcTemplate jdbc) {
     return new JdbcAttendanceTransactionRepository(jdbc);
+  }
+
+  /** Ready for B-06 (correction use case); nothing writes corrections yet. */
+  @Bean
+  IAttendanceCorrectionRepository corrections(JdbcTemplate jdbc) {
+    return new JdbcAttendanceCorrectionRepository(jdbc);
   }
 
   @Bean
