@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import vn.tmc.attendance.application.port.out.IAttendanceTransactionRepository;
+import vn.tmc.attendance.domain.AttemptSource;
 import vn.tmc.attendance.domain.AttendanceTransaction;
 import vn.tmc.attendance.domain.Direction;
 
@@ -40,12 +41,21 @@ public class JdbcAttendanceTransactionRepository implements IAttendanceTransacti
   }
 
   @Override
-  public Optional<Direction> lastDirectionBefore(UUID employeeUuid, Instant at) {
+  public Optional<AttendanceTransaction> latestBefore(UUID employeeUuid, Instant at) {
     return jdbc
         .query(
-            "SELECT direction FROM attendance_transactions WHERE employee_uuid = ? "
+            "SELECT attempt_id, employee_uuid, factory_code, gate_id, direction, occurred_at, "
+                + "source FROM attendance_transactions WHERE employee_uuid = ? "
                 + "AND occurred_at < ? ORDER BY occurred_at DESC LIMIT 1",
-            (rs, n) -> Direction.valueOf(rs.getString("direction")),
+            (rs, n) ->
+                new AttendanceTransaction(
+                    rs.getObject("attempt_id", UUID.class),
+                    rs.getObject("employee_uuid", UUID.class),
+                    rs.getString("factory_code"),
+                    rs.getString("gate_id"),
+                    Direction.valueOf(rs.getString("direction")),
+                    rs.getTimestamp("occurred_at").toInstant(),
+                    AttemptSource.valueOf(rs.getString("source"))),
             employeeUuid,
             Timestamp.from(at))
         .stream()

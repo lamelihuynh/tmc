@@ -1,5 +1,7 @@
 package vn.tmc.gatestation.adapter.out.http;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -10,6 +12,8 @@ import org.springframework.http.MediaType;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import vn.tmc.gatestation.application.port.out.IAttendanceGateway;
+import vn.tmc.gatestation.domain.Direction;
+import vn.tmc.gatestation.domain.LastPass;
 import vn.tmc.platform.kernel.ReasonCode;
 
 /**
@@ -22,8 +26,18 @@ public class HttpAttendanceGateway implements IAttendanceGateway {
   private static final ParameterizedTypeReference<List<OfflineResultDto>> OFFLINE_RESULTS =
       new ParameterizedTypeReference<>() {};
 
-  /** The part of Attendance's AttemptView this service reads. */
-  private record AttemptDto(UUID attemptId, String status, ReasonCode reasonCode) {}
+  /** The part of Attendance's AttemptView this service reads. Unknown fields are ignored. */
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  private record AttemptDto(
+      UUID attemptId,
+      String status,
+      ReasonCode reasonCode,
+      UUID employeeUuid,
+      Direction direction) {}
+
+  /** Attendance's LastPassView. */
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  private record LastPassDto(UUID employeeUuid, Direction direction, Instant occurredAt) {}
 
   private record OfflineResultDto(UUID attemptId, String outcome, String detail) {}
 
@@ -130,6 +144,26 @@ public class HttpAttendanceGateway implements IAttendanceGateway {
         .toList();
   }
 
+  @Override
+  public Optional<LastPass> lastDirection(UUID employeeUuid, Instant before) {
+    try {
+      var dto =
+          http.get()
+              .uri(
+                  uri ->
+                      uri.path("/internal/v1/employees/{id}/last-direction")
+                          .queryParam("before", before.toString())
+                          .build(employeeUuid))
+              .retrieve()
+              .body(LastPassDto.class);
+      return Optional.ofNullable(dto)
+          .filter(d -> d.direction() != null && d.occurredAt() != null)
+          .map(d -> new LastPass(d.direction(), d.occurredAt()));
+    } catch (HttpClientErrorException.NotFound e) {
+      return Optional.empty();
+    }
+  }
+
   private AttemptState post(String path, Object body) {
     var dto =
         http.post()
@@ -151,6 +185,7 @@ public class HttpAttendanceGateway implements IAttendanceGateway {
     } catch (IllegalArgumentException | NullPointerException e) {
       state = State.OTHER; // VALIDATED, GATE_OPENED or a status added later
     }
-    return new AttemptState(dto.attemptId(), state, dto.reasonCode());
+    return new AttemptState(
+        dto.attemptId(), state, dto.reasonCode(), dto.employeeUuid(), dto.direction());
   }
 }

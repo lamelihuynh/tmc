@@ -1,12 +1,15 @@
 package vn.tmc.gatestation.adapter.out.inmem;
 
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import vn.tmc.gatestation.application.port.out.IAttendanceGateway;
+import vn.tmc.gatestation.domain.LastPass;
 import vn.tmc.platform.kernel.ReasonCode;
 
 /**
@@ -16,6 +19,8 @@ import vn.tmc.platform.kernel.ReasonCode;
  */
 public class FakeAttendanceGateway implements IAttendanceGateway {
   private final Map<UUID, AttemptState> attempts = new ConcurrentHashMap<>();
+  private final Map<UUID, Instant> scannedAt = new ConcurrentHashMap<>();
+  private final Map<UUID, LastPass> seededLastPass = new ConcurrentHashMap<>();
   private volatile boolean failRecordAttempt;
   private volatile boolean failRecordResult;
 
@@ -44,14 +49,20 @@ public class FakeAttendanceGateway implements IAttendanceGateway {
     if (failRecordAttempt) {
       throw new IllegalStateException("attendance unavailable");
     }
+    scannedAt.putIfAbsent(record.attemptId(), record.scannedAt());
     return attempts.computeIfAbsent(
-        record.attemptId(), id -> new AttemptState(id, State.RESERVED, null));
+        record.attemptId(),
+        id ->
+            new AttemptState(id, State.RESERVED, null, record.employeeUuid(), record.direction()));
   }
 
   @Override
   public AttemptState recordDenied(DenialRecord record) {
     return attempts.computeIfAbsent(
-        record.attemptId(), id -> new AttemptState(id, State.DENIED, record.reason()));
+        record.attemptId(),
+        id ->
+            new AttemptState(
+                id, State.DENIED, record.reason(), record.employeeUuid(), record.direction()));
   }
 
   @Override
@@ -63,7 +74,7 @@ public class FakeAttendanceGateway implements IAttendanceGateway {
             throw new IllegalStateException("attempt not found: " + id);
           }
           return current.state() == State.RESERVED
-              ? new AttemptState(id, State.GATE_COMMANDED, null)
+              ? next(current, State.GATE_COMMANDED, null)
               : current;
         });
   }
@@ -83,10 +94,10 @@ public class FakeAttendanceGateway implements IAttendanceGateway {
             return current;
           }
           return switch (result) {
-            case OPENED -> new AttemptState(id, State.COMMITTED, null);
-            case ERROR -> new AttemptState(id, State.GATE_FAILED, ReasonCode.GATE_HARDWARE_ERROR);
+            case OPENED -> next(current, State.COMMITTED, null);
+            case ERROR -> next(current, State.GATE_FAILED, ReasonCode.GATE_HARDWARE_ERROR);
             case UNKNOWN ->
-                new AttemptState(id, State.GATE_UNKNOWN, ReasonCode.TURNSTILE_TIMEOUT_RETRY_SCAN);
+                next(current, State.GATE_UNKNOWN, ReasonCode.TURNSTILE_TIMEOUT_RETRY_SCAN);
           };
         });
   }
@@ -102,7 +113,12 @@ public class FakeAttendanceGateway implements IAttendanceGateway {
               new AttemptState(
                   item.attemptId(),
                   denied ? State.DENIED : State.COMMITTED,
-                  denied ? item.deniedReason() : null));
+                  denied ? item.deniedReason() : null,
+                  item.employeeUuid(),
+                  item.direction()));
+      if (stored == null) {
+        scannedAt.put(item.attemptId(), item.scannedAt());
+      }
       results.add(
           stored == null
               ? new OfflineItemResult(item.attemptId(), OfflineOutcome.ACCEPTED, "counted")
@@ -110,6 +126,33 @@ public class FakeAttendanceGateway implements IAttendanceGateway {
                   item.attemptId(), OfflineOutcome.DUPLICATE, "attempt already known"));
     }
     return results;
+  }
+
+  @Override
+  public Optional<LastPass> lastDirection(UUID employeeUuid, Instant before) {
+    var seeded = seededLastPass.get(employeeUuid);
+    var counted =
+        attempts.values().stream()
+            .filter(a -> a.state() == State.COMMITTED)
+            .filter(a -> employeeUuid.equals(a.employeeUuid()) && a.direction() != null)
+            .filter(a -> scannedAt.containsKey(a.attemptId()))
+            .filter(a -> scannedAt.get(a.attemptId()).isBefore(before))
+            .map(a -> new LastPass(a.direction(), scannedAt.get(a.attemptId())))
+            .max(Comparator.comparing(LastPass::at));
+    if (seeded != null && seeded.at().isBefore(before)) {
+      return counted.filter(c -> c.at().isAfter(seeded.at())).or(() -> Optional.of(seeded));
+    }
+    return counted;
+  }
+
+  /** For tests: pretend Attendance already holds this counted pass for the employee. */
+  public void seedLastPass(UUID employeeUuid, LastPass pass) {
+    seededLastPass.put(employeeUuid, pass);
+  }
+
+  private static AttemptState next(AttemptState current, State state, ReasonCode reason) {
+    return new AttemptState(
+        current.attemptId(), state, reason, current.employeeUuid(), current.direction());
   }
 
   private static boolean isFinal(State state) {

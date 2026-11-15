@@ -9,7 +9,6 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import vn.tmc.attendance.application.port.out.IAttendanceTransactionRepository;
 import vn.tmc.attendance.domain.AttendanceTransaction;
-import vn.tmc.attendance.domain.Direction;
 
 /** Process-memory attendance records, keyed by attempt id like the table's primary key. */
 public class InMemoryAttendanceTransactionRepository implements IAttendanceTransactionRepository {
@@ -21,11 +20,10 @@ public class InMemoryAttendanceTransactionRepository implements IAttendanceTrans
   }
 
   @Override
-  public Optional<Direction> lastDirectionBefore(UUID employeeUuid, Instant at) {
+  public Optional<AttendanceTransaction> latestBefore(UUID employeeUuid, Instant at) {
     return rows.values().stream()
         .filter(t -> t.employeeUuid().equals(employeeUuid) && t.occurredAt().isBefore(at))
-        .max(Comparator.comparing(AttendanceTransaction::occurredAt))
-        .map(AttendanceTransaction::direction);
+        .max(Comparator.comparing(AttendanceTransaction::occurredAt));
   }
 
   /** For tests. */

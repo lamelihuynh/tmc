@@ -13,6 +13,11 @@ public interface IAttendanceTransactionRepository {
    */
   boolean saveIfAbsent(AttendanceTransaction transaction);
 
+  /** The employee's latest counted pass strictly before {@code at}. */
+  Optional<AttendanceTransaction> latestBefore(UUID employeeUuid, Instant at);
+
   /** Direction of the employee's latest counted pass strictly before {@code at}. */
-  Optional<Direction> lastDirectionBefore(UUID employeeUuid, Instant at);
+  default Optional<Direction> lastDirectionBefore(UUID employeeUuid, Instant at) {
+    return latestBefore(employeeUuid, at).map(AttendanceTransaction::direction);
+  }
 }

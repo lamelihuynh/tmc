@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import vn.tmc.gatestation.domain.Direction;
+import vn.tmc.gatestation.domain.LastPass;
 import vn.tmc.platform.kernel.ReasonCode;
 
 /**
@@ -42,7 +43,16 @@ public interface IAttendanceGateway {
     ANOMALY
   }
 
-  record AttemptState(UUID attemptId, State state, ReasonCode reason) {}
+  /**
+   * employeeUuid and direction are null when Attendance did not send them (older version) or the
+   * token could not be read.
+   */
+  record AttemptState(
+      UUID attemptId, State state, ReasonCode reason, UUID employeeUuid, Direction direction) {
+    public AttemptState(UUID attemptId, State state, ReasonCode reason) {
+      this(attemptId, state, reason, null, null);
+    }
+  }
 
   /**
    * @param source "ONLINE" or "MANUAL"
@@ -100,4 +110,11 @@ public interface IAttendanceGateway {
   AttemptState recordGateResult(UUID attemptId, GateResult result, String correlationId);
 
   List<OfflineItemResult> ingestOffline(String kioskId, List<OfflineItem> items);
+
+  /**
+   * The employee's latest counted pass strictly before {@code before}, as Attendance (the system of
+   * record) knows it. Used to rebuild anti-passback state when the fast store lost it (A-03).
+   * Contract: GET /internal/v1/employees/{uuid}/last-direction.
+   */
+  Optional<LastPass> lastDirection(UUID employeeUuid, Instant before);
 }

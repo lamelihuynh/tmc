@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import vn.tmc.attendance.application.port.in.AttemptView;
 import vn.tmc.attendance.application.port.in.GateResult;
@@ -22,8 +23,10 @@ import vn.tmc.attendance.application.port.in.IOfflineAttendanceIngest;
 import vn.tmc.attendance.application.port.in.IOfflineAttendanceIngest.LocalStatus;
 import vn.tmc.attendance.application.port.in.IOfflineAttendanceIngest.OfflineRecord;
 import vn.tmc.attendance.application.port.in.IOfflineAttendanceIngest.OfflineResult;
+import vn.tmc.attendance.application.port.in.LastPassView;
 import vn.tmc.attendance.domain.AttemptSource;
 import vn.tmc.attendance.domain.Direction;
+import vn.tmc.platform.kernel.IClock;
 import vn.tmc.platform.kernel.ReasonCode;
 
 /**
@@ -36,12 +39,17 @@ public class InternalAttendanceController {
   private final IAttendanceCommand command;
   private final IAttendanceQuery query;
   private final IOfflineAttendanceIngest offline;
+  private final IClock clock;
 
   public InternalAttendanceController(
-      IAttendanceCommand command, IAttendanceQuery query, IOfflineAttendanceIngest offline) {
+      IAttendanceCommand command,
+      IAttendanceQuery query,
+      IOfflineAttendanceIngest offline,
+      IClock clock) {
     this.command = command;
     this.query = query;
     this.offline = offline;
+    this.clock = clock;
   }
 
   public record AttemptRequest(
@@ -126,6 +134,16 @@ public class InternalAttendanceController {
   @GetMapping("/attempts/{id}")
   public ResponseEntity<AttemptView> find(@PathVariable UUID id) {
     return query.findAttempt(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+  }
+
+  /** Rebuilds anti-passback state at the gate (A-03). 404 when the employee has no counted pass. */
+  @GetMapping("/employees/{employeeUuid}/last-direction")
+  public ResponseEntity<LastPassView> lastDirection(
+      @PathVariable UUID employeeUuid, @RequestParam(required = false) Instant before) {
+    return query
+        .lastPass(employeeUuid, before == null ? clock.now() : before)
+        .map(ResponseEntity::ok)
+        .orElse(ResponseEntity.notFound().build());
   }
 
   @PostMapping("/offline-batch")
