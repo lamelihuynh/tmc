@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import vn.tmc.platform.security.AccessDeniedException;
 import vn.tmc.platform.security.Principal;
+import vn.tmc.platform.security.PrincipalResolver;
 import vn.tmc.userqr.application.port.in.IDeviceManagement;
 
 /**
@@ -22,9 +23,11 @@ import vn.tmc.userqr.application.port.in.IDeviceManagement;
 @RestController
 public class DeviceController {
   private final IDeviceManagement devices;
+  private final PrincipalResolver principals;
 
-  public DeviceController(IDeviceManagement devices) {
+  public DeviceController(IDeviceManagement devices, PrincipalResolver principals) {
     this.devices = devices;
+    this.principals = principals;
   }
 
   public record RegisterRequest(@NotBlank String publicKey) {}
@@ -52,8 +55,8 @@ public class DeviceController {
     devices.revokeForEmployee(requireCaller(http), employeeUuid);
   }
 
-  private static Principal requireCaller(HttpServletRequest http) {
-    var caller = HeaderPrincipalResolver.resolve(http);
+  private Principal requireCaller(HttpServletRequest http) {
+    var caller = principals.resolve(http::getHeader);
     if (caller == null) {
       throw new AccessDeniedException("unauthenticated");
     }

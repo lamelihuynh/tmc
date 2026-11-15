@@ -5,3 +5,7 @@ spring:
       - org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration
       - org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration
       - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
+tmc:
+  security:
+    # dev profile: X-Subject / X-Roles are trusted when no Authorization header is sent
+    allow-dev-headers: true

@@ -7,6 +7,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import vn.tmc.platform.kernel.IClock;
+import vn.tmc.platform.security.PrincipalResolver;
+import vn.tmc.platform.security.jwt.JwtPrincipalVerifier;
 import vn.tmc.userqr.adapter.out.crypto.NimbusTokenCodec;
 import vn.tmc.userqr.adapter.out.inmem.InMemoryDeviceKeyRegistry;
 import vn.tmc.userqr.adapter.out.inmem.LoggingAuditLog;
@@ -29,6 +31,27 @@ public class UserQrConfig {
   @Bean
   IClock clock() {
     return IClock.system();
+  }
+
+  /**
+   * Who is calling (docs/api/identity.openapi.yaml). {@code tmc.security.jwks-url}: identity's
+   * JWKS, Bearer tokens are verified against it; {@code tmc.security.jwks-json}: a pinned JWKS
+   * instead (tests). {@code tmc.security.allow-dev-headers}: X-Subject/X-Roles are trusted when no
+   * Authorization header is sent; true only on the dev profiles (local, inmem).
+   */
+  @Bean
+  PrincipalResolver principalResolver(
+      @Value("${tmc.security.jwks-url:}") String jwksUrl,
+      @Value("${tmc.security.jwks-json:}") String jwksJson,
+      @Value("${tmc.security.allow-dev-headers:false}") boolean allowDevHeaders,
+      IClock clock) {
+    JwtPrincipalVerifier verifier = null;
+    if (!jwksJson.isBlank()) {
+      verifier = JwtPrincipalVerifier.fromJwksJson(jwksJson, clock);
+    } else if (!jwksUrl.isBlank()) {
+      verifier = JwtPrincipalVerifier.fromJwksUrl(jwksUrl, clock);
+    }
+    return new PrincipalResolver(verifier, allowDevHeaders);
   }
 
   @Bean

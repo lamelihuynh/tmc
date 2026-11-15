@@ -8,9 +8,8 @@ import vn.tmc.identity.application.port.out.IPasswordVerifier;
 import vn.tmc.platform.kernel.IClock;
 
 /**
- * Login with lockout and MFA (NFR-03). TODO Team C: issue the JWT (Nimbus, ES256) and publish the
- * JWKS so the gateway and services can validate it; 15 minute inactivity expiry; audit of every
- * attempt.
+ * Credential check with lockout and MFA (NFR-03). The token is issued by {@link LoginUseCase} on
+ * top of this. TODO Team C: 15 minute inactivity expiry, audit of every attempt (C-08).
  */
 public class AuthenticateUseCase implements IAuthentication {
   private final IAccountRepository accounts;
@@ -53,6 +52,6 @@ public class AuthenticateUseCase implements IAuthentication {
     }
     account.recordSuccess();
     accounts.save(account);
-    return new Result(Status.GRANTED, account.subject(), account.roles());
+    return new Result(Status.GRANTED, account.subject(), account.roles(), account.factories());
   }
 }

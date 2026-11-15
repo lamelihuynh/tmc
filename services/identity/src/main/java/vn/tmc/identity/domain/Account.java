@@ -19,15 +19,27 @@ public final class Account {
   private final UUID subject;
   private final String username;
   private final Set<Role> roles;
+  private final Set<String> factories;
   private int failedAttempts;
   private Instant lockedUntil;
   private boolean active = true;
 
   public Account(UUID subject, String username, Set<Role> roles) {
+    this(subject, username, roles, Set.of());
+  }
+
+  /**
+   * @param factories data scope put in the token claim {@code fac}; {@value #ALL_FACTORIES} = every
+   *     factory
+   */
+  public Account(UUID subject, String username, Set<Role> roles, Set<String> factories) {
     this.subject = subject;
     this.username = username;
     this.roles = Set.copyOf(roles);
+    this.factories = factories == null ? Set.of() : Set.copyOf(factories);
   }
+
+  public static final String ALL_FACTORIES = "*";
 
   public UUID subject() {
     return subject;
@@ -39,6 +51,10 @@ public final class Account {
 
   public Set<Role> roles() {
     return roles;
+  }
+
+  public Set<String> factories() {
+    return factories;
   }
 
   public boolean active() {

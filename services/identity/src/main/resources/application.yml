@@ -3,3 +3,8 @@ server:
 spring:
   application:
     name: identity
+tmc:
+  identity:
+    jwt:
+      # private EC P-256 JWK (JSON). Empty: a key generated at start-up (dev only).
+      private-jwk: ${IDENTITY_JWT_PRIVATE_JWK:}

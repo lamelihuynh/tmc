@@ -10,6 +10,10 @@ spring:
     password: ${USERQR_DB_PASSWORD:userqr}
 
 tmc:
+  security:
+    # Bearer tokens from identity are verified against this JWKS (fetched lazily, cached 5 min).
+    jwks-url: ${IDENTITY_JWKS_URL:http://localhost:8087/.well-known/jwks.json}
+    allow-dev-headers: ${TMC_ALLOW_DEV_HEADERS:false}
   qr:
     clock-skew-seconds: 60
     max-lifetime-seconds: 60

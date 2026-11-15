@@ -13,5 +13,6 @@ dependencies {
     implementation(libs.nimbus.jose.jwt)
 
     testImplementation(project(":platform:test-support"))
+    testImplementation(testFixtures(project(":platform:security")))
     testImplementation("org.springframework.boot:spring-boot-starter-test")
 }
