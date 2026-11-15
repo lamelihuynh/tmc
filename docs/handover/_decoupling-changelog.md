@@ -46,6 +46,18 @@
   hr-integration, audit-admin. Web portal và employee app vẫn gửi header dev (profile `local`).
 - Còn lại cho Team C (độc lập): TOTP (C-05), hết hạn phiên khi không hoạt động, quản lý tài khoản (FR-31), xoay khóa.
 
+### 2.3 `employees` trong gói đồng bộ (C-02 ↔ A, D-kiosk)
+
+- user-qr `GET /internal/v1/sync-bundle` có thêm `employees[]` (`employeeUuid`, `status` ACTIVE/INACTIVE, `factories`, `updatedAt`).
+  Nguồn hiện tại: `IEmployeeDirectory` + `InMemoryEmployeeDirectory`, nạp từ `tmc.qr.employees` (application.yml).
+  Team C (C-02) chỉ cần thay adapter bằng nguồn HR, không đổi hợp đồng.
+- gate-station: `HttpKioskSyncSource` đọc `employees` (bỏ qua trường lạ, bản cũ không có mảng = rỗng);
+  `IEmployeeDirectoryCache` + `SyncEmployeeDirectoryUseCase` làm mới danh bạ cổng 30 giây/lần
+  (`EmployeeDirectorySyncJob`, tắt bằng `EMPLOYEE_SYNC_ENABLED=false`, tắt sẵn ở profile `inmem`);
+  `GET /kiosk/v1/sync-bundle` chuyển tiếp `employees` cho kiosk (kiosk-simulator đã bỏ qua trường lạ).
+- Seed nhân viên một nguồn: `docs/api/fixtures/employee-seed.json`. Test `EmployeeSeedContractTest` ở identity
+  (`DevSeed`), user-qr (qua HTTP sync-bundle) và gate-station (`GateProperties`) khẳng định khớp.
+
 ## 3. Những gì đã chạy (cập nhật dần)
 
 | Lệnh | Kết quả |
@@ -56,3 +68,5 @@
 | `./gradlew :platform:security:test` | 13 test, 0 lỗi (7 test JWT mới) |
 | `./gradlew :services:identity:test` | 16 test, 3 bỏ qua (TODO Team C khác), 0 lỗi; gồm `LoginApiTest`, `EmployeeSeedContractTest` |
 | `./gradlew :services:user-qr:test` | 21 test, 0 lỗi; gồm `BearerTokenApiTest` |
+| `./gradlew :services:user-qr:test` (sau phần 2.3) | 23 test, 0 lỗi |
+| `./gradlew :services:gate-station:test` | 54 test, 0 lỗi; gồm `EmployeeSyncTest`, `EmployeeSeedContractTest` |
