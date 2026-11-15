@@ -24,12 +24,18 @@ tmc:
       reservation-ttl-seconds: 10
       pending-ttl-seconds: 60
       token-block-seconds: 60
+    # Employee eligibility is refreshed from User/QR's sync bundle (C-02); the list below is the seed
+    # used until the first successful pull. Off on the inmem profile.
+    employee-sync:
+      enabled: ${EMPLOYEE_SYNC_ENABLED:true}
+      interval-ms: 30000
     # Seed data for the scaffold (see GateProperties for the TODOs that replace these)
     gates:
       - { gate-id: BD-GATE-01, factory-code: BD, hardware-gate-id: BD-HW-01, mode: ENTRY_ONLY }
       - { gate-id: BD-GATE-02, factory-code: BD, hardware-gate-id: BD-HW-02, mode: EXIT_ONLY }
       - { gate-id: BD-GATE-03, factory-code: BD, hardware-gate-id: BD-HW-03, mode: BIDIRECTIONAL }
       - { gate-id: LA-GATE-01, factory-code: LA, hardware-gate-id: LA-HW-01, mode: BIDIRECTIONAL }
+    # MUST equal docs/api/fixtures/employee-seed.json (EmployeeSeedContractTest)
     employees:
       - { employee-uuid: "0192a1c0-0000-7000-8000-000000000001", active: true, factories: [BD, LA] }
       - { employee-uuid: "0192a1c0-0000-7000-8000-000000000002", active: true, factories: [BD] }

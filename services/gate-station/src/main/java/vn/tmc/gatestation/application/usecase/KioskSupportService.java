@@ -33,7 +33,17 @@ public class KioskSupportService implements IKioskSupport {
 
   @Override
   public SyncBundle syncBundle(Instant since) {
-    return new SyncBundle(clock.now(), gates.all(), source.deviceKeysChangedSince(since));
+    var delta = source.changedSince(since);
+    var employees =
+        delta.employees().stream()
+            .map(
+                e ->
+                    new EmployeeEligibility(
+                        e.employeeUuid().toString(),
+                        e.active() ? "ACTIVE" : "INACTIVE",
+                        e.allowedFactories().stream().sorted().toList()))
+            .toList();
+    return new SyncBundle(clock.now(), gates.all(), delta.deviceKeys(), employees);
   }
 
   @Override

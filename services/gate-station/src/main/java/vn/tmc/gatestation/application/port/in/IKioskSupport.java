@@ -13,7 +13,18 @@ public interface IKioskSupport {
   record DeviceKey(
       String deviceId, String employeeUuid, String publicKeyX509Base64, boolean revoked) {}
 
-  record SyncBundle(Instant generatedAt, List<GateConfig> gates, List<DeviceKey> deviceKeys) {}
+  /** docs/api/kiosk-edge.openapi.yaml: status is ACTIVE or INACTIVE. */
+  record EmployeeEligibility(String employeeUuid, String status, List<String> factories) {}
+
+  record SyncBundle(
+      Instant generatedAt,
+      List<GateConfig> gates,
+      List<DeviceKey> deviceKeys,
+      List<EmployeeEligibility> employees) {
+    public SyncBundle(Instant generatedAt, List<GateConfig> gates, List<DeviceKey> deviceKeys) {
+      this(generatedAt, gates, deviceKeys, List.of());
+    }
+  }
 
   record Heartbeat(
       String kioskId,

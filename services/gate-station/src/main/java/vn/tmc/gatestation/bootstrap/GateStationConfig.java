@@ -17,6 +17,7 @@ import vn.tmc.gatestation.application.port.out.IAntiPassbackStore;
 import vn.tmc.gatestation.application.port.out.IAttendanceGateway;
 import vn.tmc.gatestation.application.port.out.IAuditLog;
 import vn.tmc.gatestation.application.port.out.IEmployeeDirectory;
+import vn.tmc.gatestation.application.port.out.IEmployeeDirectoryCache;
 import vn.tmc.gatestation.application.port.out.IGateConfigRepository;
 import vn.tmc.gatestation.application.port.out.IHeartbeatStore;
 import vn.tmc.gatestation.application.port.out.IKioskSyncSource;
@@ -28,6 +29,7 @@ import vn.tmc.gatestation.application.usecase.ManualOpenUseCase;
 import vn.tmc.gatestation.application.usecase.ObserveGateUseCase;
 import vn.tmc.gatestation.application.usecase.RecordScanUseCase;
 import vn.tmc.gatestation.application.usecase.ScanSettings;
+import vn.tmc.gatestation.application.usecase.SyncEmployeeDirectoryUseCase;
 import vn.tmc.gatestation.domain.policy.AccessPolicy;
 import vn.tmc.gatestation.domain.policy.AccessPolicyChain;
 import vn.tmc.gatestation.domain.policy.ActiveEmployeeRule;
@@ -97,8 +99,9 @@ public class GateStationConfig {
         props.gates().stream().map(GateProperties.Gate::toConfig).toList());
   }
 
+  /** Seed from application.yml, refreshed from the sync bundle by EmployeeDirectorySyncJob. */
   @Bean
-  IEmployeeDirectory employeeDirectory(GateProperties props) {
+  IEmployeeDirectoryCache employeeDirectory(GateProperties props) {
     return new InMemoryEmployeeDirectory(
         props.employees().stream().map(GateProperties.Employee::toAccess).toList());
   }
@@ -152,6 +155,12 @@ public class GateStationConfig {
   @Bean
   IGateObservation gateObservation(IGateConfigRepository gates, ITurnstileControlPort turnstile) {
     return new ObserveGateUseCase(gates, turnstile);
+  }
+
+  @Bean
+  SyncEmployeeDirectoryUseCase syncEmployeeDirectory(
+      IKioskSyncSource source, IEmployeeDirectoryCache directory, IClock clock) {
+    return new SyncEmployeeDirectoryUseCase(source, directory, clock);
   }
 
   @Bean
