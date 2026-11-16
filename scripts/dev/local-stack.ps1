@@ -31,7 +31,7 @@ $Services = @(
   @{ Name = 'user-qr';      Port = 8083; Jar = "services\user-qr\build\libs\user-qr-$Version.jar";           Env = @{ SPRING_PROFILES_ACTIVE = 'local' } },
   @{ Name = 'attendance';   Port = 8082; Jar = "services\attendance\build\libs\attendance-$Version.jar";     Env = @{ SPRING_PROFILES_ACTIVE = 'local' } },
   @{ Name = 'gate-station'; Port = 8081; Jar = "services\gate-station\build\libs\gate-station-$Version.jar"; Env = @{ SPRING_PROFILES_ACTIVE = 'local'; TURNSTILE_MODE = 'http'; TURNSTILE_URL = 'http://localhost:8090' } },
-  @{ Name = 'identity';     Port = 8087; Jar = "services\identity\build\libs\identity-$Version.jar";         Env = @{} }
+  @{ Name = 'identity';     Port = 8087; Jar = "services\identity\build\libs\identity-$Version.jar";         Env = @{ SPRING_PROFILES_ACTIVE = 'local' } }
 )
 
 function Get-Java {

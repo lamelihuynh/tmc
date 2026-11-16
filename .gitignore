@@ -16,6 +16,7 @@ hs_err_pid*
 node_modules/
 apps/web-portal/dist/
 apps/employee-app/dist/
+*.tsbuildinfo
 
 # Local runtime data
 *.db

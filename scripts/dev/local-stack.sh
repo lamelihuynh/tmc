@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Starts or stops the zero-Docker local edge stack: turnstile simulator, user-qr, attendance, gate-station.
+# Starts or stops the zero-Docker local stack: turnstile simulator, user-qr, attendance, gate-station,
+# identity (same five processes as local-stack.ps1).
 # State lives in process memory ("local" profile), so `restart` gives you a clean slate.
 #
-#   scripts/dev/local-stack.sh start     build jars if missing, start the four processes, wait until ready
+#   scripts/dev/local-stack.sh start     build jars if missing, start the five processes, wait until ready
 #   scripts/dev/local-stack.sh stop
 #   scripts/dev/local-stack.sh restart
 #   scripts/dev/local-stack.sh status
@@ -21,6 +22,7 @@ SERVICES=(
   "user-qr:8083:services/user-qr/build/libs/user-qr-0.1.0-SNAPSHOT.jar"
   "attendance:8082:services/attendance/build/libs/attendance-0.1.0-SNAPSHOT.jar"
   "gate-station:8081:services/gate-station/build/libs/gate-station-0.1.0-SNAPSHOT.jar"
+  "identity:8087:services/identity/build/libs/identity-0.1.0-SNAPSHOT.jar"
 )
 
 listening() { lsof -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
@@ -29,7 +31,7 @@ build() {
   echo "building jars and simulator tools ..."
   (cd "$ROOT" && ./gradlew -q \
     :services:gate-station:bootJar :services:attendance:bootJar :services:user-qr:bootJar \
-    :simulators:turnstile-simulator:bootJar \
+    :services:identity:bootJar :simulators:turnstile-simulator:bootJar \
     :simulators:device-simulator:installDist :simulators:kiosk-simulator:installDist)
 }
 

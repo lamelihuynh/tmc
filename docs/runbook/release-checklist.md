@@ -44,6 +44,16 @@ Làm trên một máy (hoặc thư mục) **chưa từng build repo**, theo đú
 - [ ] Repo ở chế độ cho giảng viên truy cập được (công khai hoặc đã mời)
 - [ ] Gắn thẻ `m2-submission` vào commit đã kiểm chứng
 
+### Việc còn mở trước khi bật bảo vệ nhánh (TODO, chưa làm)
+
+`CODEOWNERS` vẫn dùng handle giữ chỗ `@REPLACE-ME-team-a` ... `@REPLACE-ME-team-d`. Không tự đặt handle: chỉ người có
+tài khoản GitHub thật của từng team mới điền được.
+
+- [ ] Lead mỗi team gửi tài khoản GitHub (hoặc tạo team `@<org>/team-x`) cho lead Team D
+- [ ] Thay 4 handle giữ chỗ trong `CODEOWNERS` (team A, B, C, D) và các dòng dùng chung `/platform/*`, `/docs/api/`, `/docs/adr/`
+- [ ] Mở một PR thử: GitHub không báo "CODEOWNERS có lỗi" ở tab Files
+- [ ] Sau đó mới bật "Require review from Code Owners" và chọn 5 job CI bắt buộc (build, employee-app, portal, integration, demo)
+
 ## Ngày nộp
 
 - [ ] Mở URL GitHub trong cửa sổ ẩn danh (hoặc tài khoản khác) để chắc nó truy cập được

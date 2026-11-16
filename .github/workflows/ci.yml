@@ -103,7 +103,7 @@ jobs:
           path: "**/build/reports/tests/**"
           retention-days: 7
 
-  # Dựng 4 service của edge bằng profile "local" (không cần Docker) rồi chạy 3 kịch bản demo từ đầu
+  # Dựng 4 service của edge và identity bằng profile "local" (không cần Docker) rồi chạy 3 kịch bản demo từ đầu
   # đến cuối: quét hợp lệ, mất mạng, cổng trả lời trễ. Đây là phép thử "sản phẩm có chạy không".
   demo:
     name: demo
@@ -118,6 +118,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Start the local stack
         run: scripts/dev/local-stack.sh start
+      - name: Identity login and JWKS
+        run: |
+          curl -sf -X POST http://localhost:8087/auth/v1/login -H 'Content-Type: application/json' \
+            -d '{"username":"nv001","password":"dev-only-change-me"}' | grep -q '"accessToken"'
+          curl -sf http://localhost:8087/.well-known/jwks.json | grep -q '"kty":"EC"'
       - name: Demo online
         run: scripts/demo/online.sh
       # Trạng thái nằm trong bộ nhớ: khởi động lại để mỗi kịch bản bắt đầu sạch.
