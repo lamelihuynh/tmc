@@ -1,6 +1,30 @@
 # Team D: Kiosk, Portal và Central
 
-Đọc [00-he-thong.md](00-he-thong.md) và làm xong [02-chay-local.md](02-chay-local.md) trước khi đọc tài liệu này.
+Đọc [00-he-thong.md](00-he-thong.md) và làm xong [02-chay-local.md](02-chay-local.md) trước khi đọc tài liệu này. Lịch chung: [01-ke-hoach.md](01-ke-hoach.md).
+
+> **Bạn có thể bắt đầu ngay (16/11)**
+>
+> **Đã có sẵn cho Team D** (bước gỡ phụ thuộc, nhánh `chore/x/decouple-teams`):
+>
+> - D-01 xong và đã kiểm chứng: 7 jar ở profile mặc định trên hạ tầng `make up` (kết quả ở `docs/runbook/troubleshooting.md`, mục "Kết quả D-01").
+> - D-03 phần lớn xong: consumer RabbitMQ thật ở reporting (`tmc.reporting.attendance`), hr-integration (`tmc.hr.attendance`), audit-admin (`tmc.audit.events`), mỗi hàng đợi có DLQ `<tên>.dlq`, thử lại 3 lần, dedup JDBC bảng `processed_messages` (Flyway V1 của từng service); IT `AttendanceEventListenerIT`, `HrAttendanceListenerIT`, `AuditEventListenerIT` xanh.
+> - Reporting đã áp `AttendanceCorrected` (`ProjectionTest.should_apply_a_correction_event_on_top_of_the_original` đã bật). hr-integration đã bind `attendance.AttendanceCorrected` nhưng use case chưa xử lý (D-06).
+> - `local-stack.sh` và `local-stack.ps1` cùng khởi động 5 tiến trình (có identity); job `demo` của CI kiểm login và JWKS.
+> - identity cấp JWT, user-qr nhận Bearer; gói đồng bộ có `employees` và gate-station chuyển tiếp nó qua `GET /kiosk/v1/sync-bundle`.
+>
+> **Lệnh:**
+>
+> ```bash
+> ./gradlew :services:reporting:test :services:hr-integration:test :services:audit-admin:test :simulators:kiosk-simulator:test
+> ./gradlew :services:reporting:integrationTest :services:hr-integration:integrationTest :services:audit-admin:integrationTest   # cần Docker
+> (cd apps/employee-app && npm ci && npm test && npm run lint && npm run build)
+> (cd apps/web-portal && npm ci && npm test && npm run lint && npm run build)
+> make up            # hạ tầng thật; container edge cũ thiếu database gate_store thì: make nuke && make up
+> ```
+>
+> **Code theo:** `docs/api/attendance-events.asyncapi.yaml` (mọi sự kiện, `CorrectionPayload`), `docs/api/hr-payroll.openapi.yaml`, `docs/api/central.openapi.yaml`, `docs/api/identity.openapi.yaml`, `docs/api/kiosk-edge.openapi.yaml` (`employees` trong sync bundle), `docs/api/fixtures/*`; trong test: sự kiện tự dựng theo AsyncAPI, `TestTokens`, `TmcContainers`, `FakeEdge` (trong `KioskAppTest`).
+>
+> **Không chờ team nào.** Mọi story xong được với sự kiện tự tạo, HR giả và token của `TestTokens`. Phần cần mã thật của team khác là kiểm tích hợp **tùy chọn** ở mục 5.
 
 ## 1. Nhiệm vụ của team
 
@@ -11,185 +35,186 @@ Team D giữ **hai đầu của hệ thống** và phần gắn kết cả nhóm
 | `simulators/kiosk-simulator` | Kiosk dòng lệnh: journal SQLite, xác thực offline, gửi bù |
 | `apps/employee-app` (cổng 5174) | App nhân viên và trang kiosk web (Team C phối hợp phần token) |
 | `apps/web-portal` (cổng 5173) | Cổng thông tin cho bảo vệ, quản đốc, HR |
-| `services/reporting` (8084) | Read model hiện diện, quy tắc gian lận |
-| `services/hr-integration` (8085) | Đồng bộ công sang HR/Payroll |
-| `services/audit-admin` (8086) | Nhật ký kiểm toán chỉ thêm |
-| `docker`, `scripts`, `.github` | Hạ tầng, script, CI |
+| `services/reporting` (8084), `services/hr-integration` (8085), `services/audit-admin` (8086) | Read model hiện diện và gian lận; đồng bộ HR/Payroll; nhật ký kiểm toán chỉ thêm |
+| `docker`, `scripts`, `.github`, `CODEOWNERS` | Hạ tầng, script, CI, bảo vệ nhánh |
 | Tài liệu | Phần HR và triển khai, Task 2, hợp nhất báo cáo cuối |
 
-Team D có nhiều module nhất nhưng mỗi module nhỏ. Hai người nên chia theo module ngay từ đầu: D1 nhận hr-integration, hạ tầng và báo cáo; D2 nhận CI, reporting, audit-admin và hai ứng dụng web.
+Hai người: **D1** (lead) giữ hr-integration, kiosk, hạ tầng, CI và hợp nhất báo cáo; **D2** giữ reporting, audit-admin và hai ứng dụng web.
 
 ## 2. Bản đồ mã
 
-Ba service trung tâm cùng một khuôn: một listener nhận sự kiện, bọc trong `IdempotentConsumer` để không xử lý trùng, gọi một use case, và một controller chỉ đọc.
+Ba service trung tâm cùng một khuôn: listener `@RabbitListener` bọc `IdempotentConsumer`, gọi một use case; một controller chỉ đọc.
 
-| Service | Use case nhận sự kiện | Use case truy vấn | Port ra | Test |
+| Service | Use case nhận sự kiện | Port ra | Adapter hiện có | Test |
 | --- | --- | --- | --- | --- |
-| `reporting` | `ProjectAttendanceEventUseCase` | `ReportingQueryService` | `IPresenceRepository` | `ProjectionTest` (3 test `@Disabled`) |
-| `hr-integration` | `SyncAttendanceEventUseCase` | `SyncMonitoringService` | `IHrPayrollPort`, `ISyncLogRepository` | `SyncAttendanceEventTest` (3 test `@Disabled`) |
-| `audit-admin` | `RecordAuditUseCase` | `AuditQueryService` | `IAuditStore` (không có hàm sửa hay xóa) | `AuditTest` (2 test `@Disabled`) |
+| `reporting` | `ProjectAttendanceEventUseCase` | `IPresenceRepository` | `InMemoryPresenceRepository` | `ProjectionTest` (2 `@Disabled`), `AttendanceEventListenerIT` |
+| `hr-integration` | `SyncAttendanceEventUseCase` | `IHrPayrollPort`, `ISyncLogRepository` | `SimulatedHrPayrollAdapter`, `InMemorySyncLogRepository` | `SyncAttendanceEventTest` (3 `@Disabled`), `HrAttendanceListenerIT` |
+| `audit-admin` | `RecordAuditUseCase` | `IAuditStore` (không có hàm sửa hay xóa) | `InMemoryAuditStore` | `AuditTest` (2 `@Disabled`), `AuditEventListenerIT` |
 
-Các test `@Disabled` chính là đặc tả của việc phải làm: mỗi test ghi rõ `TODO Team D` và yêu cầu tương ứng.
-
-Các phần còn lại:
+Các test `@Disabled` là đặc tả: mỗi cái ghi `TODO Team D` và yêu cầu tương ứng.
 
 | Module | Tệp chính | Việc |
 | --- | --- | --- |
 | `kiosk-simulator` | `KioskApp`, `Journal`, `OfflineVerifier`, `HttpEdgeClient`, `KioskSimulatorCli` | Ghi journal trước khi gọi mạng; gửi lại cùng `attempt_id`; tự xác thực khi mất mạng |
-| `apps/employee-app` | `src/lib/token.ts`, `deviceKey.ts`, `api.ts`; `src/pages/Login.tsx`, `Home.tsx`, `Kiosk.tsx` | Ký token bằng WebCrypto; khóa riêng không xuất được, lưu trong IndexedDB; trang `/kiosk` quét bằng `jsqr` |
+| `apps/employee-app` | `src/lib/token.ts`, `deviceKey.ts`, `api.ts`; `src/pages/Login.tsx`, `Home.tsx`, `Kiosk.tsx` | Ký token bằng WebCrypto; trang `/kiosk` quét bằng `jsqr` |
 | `apps/web-portal` | `src/App.tsx`, `src/pages/*`, `src/lib/api.ts`, `identity.ts` | Ba trang; thanh danh tính dùng cho phát triển |
-| `docker` | `docker-compose.yml` | PostgreSQL edge (5432), PostgreSQL central (5433), Redis (6379), RabbitMQ (5672, 15672) |
-| `scripts` | `dev/local-stack.sh`, `dev/local-stack.ps1`, `demo/*.sh` | Dựng stack local; 3 kịch bản demo |
+| `docker` | `docker-compose.yml`, `init/edge/*.sql`, `init/central/01-databases.sql` | PostgreSQL edge (5432, có `gate_store`), central (5433, có `reporting`, `hr_integration`, `audit_admin`, `identity`), Redis, RabbitMQ |
+| `scripts` | `dev/local-stack.sh`, `dev/local-stack.ps1`, `demo/*.sh`, `docs/*.mjs` | Stack local; 3 demo; ảnh chụp và ảnh Gantt |
 
-## 3. Chạy và kiểm thử phần của team
+## 3. Việc phải làm (16/11 đến 25/11)
 
-```bash
-./gradlew :services:reporting:test :services:hr-integration:test :services:audit-admin:test
-./gradlew :simulators:kiosk-simulator:test          # hiện đỏ trên Windows, xem D-14
-(cd apps/employee-app && npm test && npm run lint && npm run build)
-(cd apps/web-portal && npm test && npm run lint && npm run build)
-```
+**Mọi hạn là 23:00 của ngày cuối**, tính theo lúc PR hợp nhất vào `main`. Mức: **B** bắt buộc, **N** nên có, **T** chỉ làm nếu còn thời gian.
 
-Chạy một service trung tâm đơn lẻ (không cần broker):
+| Story | Mức | Người | Bắt đầu | Hạn |
+| --- | --- | --- | --- | --- |
+| Việc 0: hợp nhất nhánh `chore/x/decouple-teams` vào `main` | B | D1 (bốn lead duyệt) | 16/11 sáng | 16/11 |
+| D-06 Adapter HR/Payroll và `AttendanceCorrected` | B | D1 | 16/11 | 17/11 |
+| D-07 Cảnh báo hạn chót ngày 1 | B | D1 | 18/11 | 18/11 |
+| D-02 (phần còn lại) CODEOWNERS, bảo vệ nhánh, 5 check bắt buộc | B | D1 | 19/11 sáng | 19/11 |
+| D-03 (phần còn lại) Cảnh báo DLQ | N | D1 | 19/11 chiều | 19/11 |
+| D-15 Kiosk dùng `employees` khi offline | N | D1 | 20/11 | 20/11 |
+| D-12 Hợp nhất báo cáo và nộp | B | D1 (D2 hỗ trợ 25/11) | 23/11 | 25/11 (nộp 26/11) |
+| D-05 Quy tắc gian lận R4 | B | D2 | 16/11 | 16/11 |
+| D-04 Read model JDBC chung transaction với dedup | B | D2 | 17/11 | 18/11 sáng |
+| D-08 Kho audit bền và chuỗi băm | B | D2 | 18/11 chiều | 19/11 |
+| D-13 Portal và app nhân viên gửi Bearer | N | D2 | 20/11 | 23/11 sáng |
+| D-14 Test kiosk trên Windows | N | D2 | 23/11 chiều | 23/11 |
+| D-16 Thử trang `/kiosk` bằng webcam và điện thoại thật | T | D2 | 24/11 (trong tổng duyệt) | 24/11 |
 
-```bash
-SPRING_PROFILES_ACTIVE=inmem ./gradlew :services:reporting:bootRun
-curl -s 'http://localhost:8084/supervision/v1/presence?factory=BD' \
-  -H 'X-Subject: 0192a1c0-0000-7000-8000-00000000a001' -H 'X-Roles: PRODUCTION_SUPERVISOR' -H 'X-Scope-Factories: BD'
-```
+Ngày 24/11: đóng băng mã lúc 23:00; D1 điều phối tổng duyệt demo lần 1 trên mã đóng băng. Ngày 25/11: hợp nhất báo cáo, tổng duyệt lần 2, dự phòng. Ngày 26/11: nộp.
 
-Ở profile `inmem`, sự kiện từ attendance **không tới** được service trung tâm. Muốn thấy dữ liệu chạy xuyên suốt thì cần RabbitMQ và profile mặc định (sau B-02 và D-03).
+### Việc 0. Hợp nhất nhánh gỡ phụ thuộc (D1, sáng 16/11)
 
-Chạy hai ứng dụng web: `npm run dev` trong từng thư mục. Hướng dẫn dùng app nhân viên: runbook mục 5.
+Mọi "đã có sẵn" trong bộ tài liệu này nằm trên nhánh `chore/x/decouple-teams`. D1 mở PR vào `main`, bốn lead duyệt, CI xanh trên GitHub (lần đầu cho các thay đổi này), squash merge. Sau đó mọi người `git switch main && git pull` rồi mới tạo nhánh story. CI đỏ thì sửa ngay trên nhánh đó trước khi hợp nhất.
 
-## 4. Việc phải làm
+### D-06. Adapter HR/Payroll và `AttendanceCorrected` (B, M, D1, 16 đến 17/11)
 
-**Mọi hạn là 23:00 của ngày được ghi**, tính theo thời điểm PR hợp nhất vào `main`. Khi một story ghi khoảng ngày (ví dụ "16 đến 17/11"), hạn là 23:00 của ngày cuối. Toàn cảnh lịch: [03-gantt.md](03-gantt.md).
-
-### D-01. Kiểm chứng hạ tầng Docker (bắt buộc, S, 12/11, D1). **Cả nhóm đang chờ.**
-
-- **Việc:** chạy `docker compose -f docker/docker-compose.yml up -d` trên macOS và Windows; kiểm cả bốn container khỏe; thử kết nối bằng thông số trong `application.yml` của attendance và user-qr.
-- **Xong khi:** ghi kết quả ("chạy được" hoặc danh sách lỗi và cách sửa) vào `docs/runbook/troubleshooting.md` và báo trong họp đứng ngày 13/11.
-- **Thêm trong đợt này:** database hoặc schema riêng cho Gate Store của Team A (A-04) khi Team A yêu cầu.
-
-### D-02. Hoàn thiện CI (bắt buộc, S, 12 đến 16/11, D2). **Cả nhóm đang chờ.**
-
-CI đã có sẵn ở `.github/workflows/ci.yml` và chạy trên **mọi lần đẩy lên mọi nhánh** cùng mọi PR vào `main`. Dự án chỉ chạy local nên không có bước triển khai.
-
-| Job | Kiểm gì |
+| | |
 | --- | --- |
-| `build` | `./gradlew spotlessCheck build`: định dạng, biên dịch, test đơn vị, luật kiến trúc |
-| `employee-app` | `npm ci`, kiểm định dạng, lint, test, build |
-| `portal` | Như trên cho `apps/web-portal` |
-| `integration` | `./gradlew integrationTest` (Testcontainers) |
-| `demo` | Dựng stack local trên runner rồi chạy 3 kịch bản demo từ đầu đến cuối |
+| Mục tiêu | Gửi công sang HR/Payroll qua HTTP, không bao giờ gửi trùng; bản hiệu chỉnh cũng được gửi |
+| Sửa ở | `adapter/out/http/HttpHrPayrollAdapter.java` (mới); mở rộng `IHrPayrollPort` với thao tác tra cứu; `SyncAttendanceEventUseCase` xử lý `UNKNOWN` (tra cứu trước, chỉ gửi lại khi HR xác nhận chưa nhận) và xử lý `AttendanceCorrected` (bản có `aggregateVersion` lớn hơn thay bản cũ) |
+| Code theo | `docs/api/hr-payroll.openapi.yaml`; `CorrectionPayload` trong AsyncAPI; HR giả là máy chủ HTTP trong test (cách `HttpTurnstileAdapterTest` của gate-station làm) |
+| Xong khi | Bật `SyncAttendanceEventTest.should_look_up_the_result_before_resending_an_unknown_event`; test mới cho `AttendanceCorrected` (sự kiện tự dựng); `HrAttendanceListenerIT` vẫn xanh. Không làm scheduler có backoff |
 
-Cả 5 job đều bắt buộc và đã chạy xanh trên GitHub ngày 11/11/2026.
+### D-07. Cảnh báo hạn chót ngày 1 (B, M, D1, 18/11)
 
-- **Việc còn lại:** bảo vệ nhánh `main` theo `CONTRIBUTING.md`, đưa 5 job vào required status checks; thay các `REPLACE-ME-*` trong `CODEOWNERS` bằng tài khoản thật; khi các team thêm test tích hợp mới (A-01, B-02, C-01, D-03), theo dõi thời gian chạy của job `integration` và tách job nếu vượt 15 phút.
-- **Xong khi:** một PR thử cố ý làm đỏ test thì không hợp nhất được; đẩy thẳng lên `main` bị từ chối.
+| | |
+| --- | --- |
+| Mục tiêu | Bản ghi chưa `SYNCED` của kỳ vừa qua: cảnh báo lúc 08:00 ngày 1, báo động nếu còn sót lúc 12:00 (NFR-08) |
+| Sửa ở | `services/hr-integration`: use case kiểm tra, scheduler gọi use case |
+| Code theo | `IClock` giả (`platform/common-kernel`) |
+| Xong khi | Bật `should_raise_a_deadline_alert_before_noon_on_the_first_day_of_the_month`. `should_send_a_correction_batch_for_missing_or_failed_records` vẫn `@Disabled` (lô chốt bị cắt) |
 
-### D-14. Sửa test kiosk trên Windows (nên có, S, 12/11, D2)
+### D-02 (phần còn lại). CODEOWNERS, bảo vệ nhánh, 5 check bắt buộc (B, S, D1, 19/11 sáng)
 
-20 test của `KioskAppTest` lỗi trên Windows với `Failed to delete temp directory ... kiosk.db`: kết nối SQLite chưa đóng khi JUnit dọn thư mục tạm.
+| | |
+| --- | --- |
+| Mục tiêu | `main` được bảo vệ đúng [`CONTRIBUTING.md`](../../CONTRIBUTING.md) |
+| Việc | Làm theo [`release-checklist.md`](../runbook/release-checklist.md), mục "Việc còn mở trước khi bật bảo vệ nhánh": lead A, B, C gửi tài khoản GitHub trước họp đứng 19/11; thay `@REPLACE-ME-team-*` trong `CODEOWNERS`; bật bảo vệ nhánh với **5 check bắt buộc: `build`, `employee-app`, `portal`, `integration`, `demo`** (đúng tên job trong `.github/workflows/ci.yml`) |
+| Xong khi | PR thử cố ý làm đỏ một test không hợp nhất được; đẩy thẳng lên `main` bị từ chối; GitHub không báo lỗi CODEOWNERS. Lead nào chưa gửi tài khoản thì giữ handle giữ chỗ, chưa bật "Require review from Code Owners", ghi vào nhật ký quyết định. Không chặn team nào |
 
-- **Sửa ở:** `simulators/kiosk-simulator`: bảo đảm `Journal` đóng kết nối (hiện thực `AutoCloseable`, đóng trong `@AfterEach`).
-- **Xong khi:** `./gradlew :simulators:kiosk-simulator:test` xanh trên Windows và macOS; bỏ được `-x :simulators:kiosk-simulator:test` khỏi runbook.
+### D-03 (phần còn lại). Cảnh báo DLQ (N, S, D1, 19/11 chiều)
 
-### D-05. Quy tắc gian lận R4 (bắt buộc, M, 16 đến 17/11, D2)
+| | |
+| --- | --- |
+| Mục tiêu | Thông điệp rơi vào `<hàng đợi>.dlq` thì có người biết |
+| Sửa ở | Ba service trung tâm: log mức `WARN` và chỉ số (hoặc endpoint chỉ đọc) số thông điệp trong DLQ |
+| Code theo | `HrAttendanceListenerIT.should_park_a_message_that_keeps_failing_in_the_dead_letter_queue` |
+| Xong khi | Mở rộng IT đó: sau khi thông điệp vào DLQ, chỉ số hoặc endpoint báo 1 |
 
-Lớp chống dùng lại thứ tư của ADR-12. Hiện chỉ có interface `FraudRule`.
+### D-15. Kiosk dùng `employees` khi offline (N, M, D1, 20/11)
 
-- **Sửa ở:** `services/reporting/.../domain/`: `ImpossibleTravelRule` (vào BD rồi vào LA trong khoảng thời gian không thể di chuyển kịp) và `RepeatedDenialRule` (nhiều lần bị từ chối liên tiếp); gọi từ `ProjectAttendanceEventUseCase`; lưu và truy vấn cảnh báo.
-- **Xong khi:** bật được test `should_flag_two_entries_in_different_factories_ten_minutes_apart`.
-- **Không phụ thuộc ai:** quy tắc là mã thuần trong `domain`, test bằng sự kiện tự tạo. Làm được từ ngày đầu.
+| | |
+| --- | --- |
+| Mục tiêu | Khi mất mạng, kiosk từ chối nhân viên `INACTIVE` hoặc không được vào nhà máy này, như gate-station làm khi online |
+| Sửa ở | `simulators/kiosk-simulator`: `KioskApp` lưu `employees` từ `GET /kiosk/v1/sync-bundle` vào journal; `OfflineVerifier` kiểm trạng thái và nhà máy |
+| Code theo | `employees[]` trong `kiosk-edge.openapi.yaml`; `docs/api/fixtures/employee-seed.json`; `FakeEdge` |
+| Xong khi | Test trong `KioskAppTest`: offline, nhân viên `INACTIVE` bị từ chối với `EMPLOYEE_INACTIVE`, nhân viên chỉ có `BD` bị từ chối ở kiosk `LA`; gói đồng bộ cũ không có `employees` thì giữ hành vi cũ |
 
-### D-06. Adapter HR/Payroll (bắt buộc, M, 13 đến 18/11, D1). Bản thu nhỏ.
+### D-12. Hợp nhất báo cáo và nộp (B, L, D1, 23 đến 25/11; nộp 26/11)
 
-- **Sửa ở:** `services/hr-integration/.../adapter/out/http/HttpHrPayrollAdapter.java` theo `docs/api/hr-payroll.openapi.yaml`; mở rộng `IHrPayrollPort` với thao tác tra cứu kết quả; use case xử lý bản ghi `UNKNOWN`.
-- **Xong khi:** bật được test `should_look_up_the_result_before_resending_an_unknown_event`: HR không trả lời thì bản ghi là `UNKNOWN`; lần xử lý sau **tra cứu trước**, chỉ gửi lại khi HR xác nhận chưa nhận; không bao giờ gửi trùng.
-- **Cách test:** dựng một HR giả bằng máy chủ HTTP trong test, giống cách `HttpTurnstileAdapterTest` của gate-station làm.
-- **Không làm trong đợt này:** scheduler thử lại có backoff.
+| | |
+| --- | --- |
+| Đầu vào | Bản nháp của A, B, C trong `docs/report/` (20/11), bản cuối (24/11); số đo A-09 (23/11) |
+| Việc | Cập nhật `docs/document.md` theo `docs/adr/README.md` mục 3; viết phần HR, triển khai và Task 2 (module đã hiện thực, cách chạy, ảnh kết quả test và demo, URL GitHub); hợp nhất một giọng văn; đánh số hình; gom "Hạn chế và việc tiếp theo" từ [01-ke-hoach.md](01-ke-hoach.md) mục 6 |
+| Xong khi | Qua hết [`release-checklist.md`](../runbook/release-checklist.md); PDF xong 25/11; nộp 26/11. Ảnh và số liệu chụp trên mã đã đóng băng (24/11) |
 
-### D-08. Chuỗi băm cho nhật ký kiểm toán (bắt buộc, S đến M, 18/11, D2). Bản thu nhỏ.
+### D-05. Quy tắc gian lận R4 (B, M, D2, 16/11)
 
-- **Sửa ở:** `services/audit-admin`: mỗi `AuditEntry` mang băm của nội dung nối với băm của bản ghi trước; thêm thao tác kiểm tra toàn chuỗi.
-- **Xong khi:** bật được test `should_detect_a_modified_entry_through_the_hash_chain`; test `should_have_no_way_to_change_or_remove_history_through_the_store_port` vẫn xanh (không thêm hàm sửa hay xóa vào `IAuditStore`).
-- **Không làm trong đợt này:** kho PostgreSQL chỉ INSERT và lưu 12 tháng.
+| | |
+| --- | --- |
+| Mục tiêu | Lớp chống dùng lại thứ tư của ADR-12 |
+| Sửa ở | `services/reporting/.../domain/`: `ImpossibleTravelRule`, `RepeatedDenialRule`; gọi từ `ProjectAttendanceEventUseCase`; lưu và truy vấn cảnh báo |
+| Code theo | `FraudRule`; sự kiện tự dựng theo AsyncAPI |
+| Xong khi | Bật `ProjectionTest.should_flag_two_entries_in_different_factories_ten_minutes_apart` |
 
-### D-03. Consumer thật (bắt buộc, M, 19 đến 20/11, cả hai). Bản thu nhỏ.
+### D-04. Read model JDBC chung transaction với dedup (B, M, D2, 17 đến 18/11 sáng)
 
-- **Phụ thuộc:** H8 (B-02) và H9 (B-10), hạn 18/11.
-- **Việc:** với cả ba consumer: dùng `JdbcProcessedMessageStore` của Team B thay bản bộ nhớ; thêm hàng đợi thư chết (DLQ) và số lần thử lại có giới hạn; kiểm chứng các listener `@RabbitListener` với RabbitMQ thật.
-- **Sửa ở:** `adapter/in/messaging/*` và `bootstrap/*Config` của ba service; test tích hợp dùng Testcontainers RabbitMQ.
-- **Xong khi** có test chứng minh: gửi cùng một thông điệp hai lần thì kết quả không nhân đôi; thông điệp làm use case ném lỗi thì sau số lần thử quy định sẽ vào DLQ và không chặn thông điệp sau; consumer khởi động lại không xử lý lại thông điệp cũ.
-- **Nếu B-02 trễ:** không cần publisher của Team B. Test tự đẩy `EventEnvelope` lên exchange `tmc.attendance.events` bằng `RabbitTemplate`. Thứ thật sự cần là hợp đồng trong AsyncAPI, đã chốt từ 13/11.
-- **Nếu B-10 trễ:** làm DLQ và thử lại trước với `InMemoryProcessedMessageStore`, nối bản JDBC sau.
-- **Chia việc:** D1 làm hr-integration, D2 làm reporting và audit-admin. Làm reporting trước làm mẫu, hai service còn lại sao theo.
+| | |
+| --- | --- |
+| Mục tiêu | Hiện diện không mất khi reporting khởi động lại; ghi read model và đánh dấu `processed_messages` cùng một transaction |
+| Sửa ở | `adapter/out/persistence/JdbcPresenceRepository.java` (mới), migration `V2__presence.sql` trong database `reporting`; dùng `IdempotentConsumer.TransactionRunner` |
+| Code theo | `MessagingInfraIT.should_roll_the_dedup_marker_back_when_the_handler_fails_in_the_same_transaction`; `Presence.supersededBy` (so `aggregateVersion`) |
+| Xong khi | IT mới: chiếu sự kiện, khởi động lại context, hiện diện còn; handler ném lỗi thì cả read model lẫn dấu dedup đều không được ghi; `AttendanceEventListenerIT` vẫn xanh. Không làm báo cáo theo nhóm, ca, xuất file (`should_build_a_group_attendance_report_within_the_role_scope` vẫn `@Disabled`) |
 
-### D-07. Cảnh báo hạn chót ngày 1 (bắt buộc, M, 20/11, D1). Bản thu nhỏ.
+### D-08. Kho audit bền và chuỗi băm (B, M, D2, 18/11 chiều đến 19/11)
 
-- **Sửa ở:** `services/hr-integration`: use case kiểm các bản ghi chưa `SYNCED` của kỳ vừa qua, phát cảnh báo lúc 08:00 ngày 1 và báo động nếu còn sót lúc 12:00; scheduler gọi use case.
-- **Xong khi:** bật được test `should_raise_a_deadline_alert_before_noon_on_the_first_day_of_the_month`, dùng `IClock` giả để tua thời gian.
-- **Không làm trong đợt này:** đối soát kỳ với attendance và lô chốt (test `should_send_a_correction_batch_...` vẫn `@Disabled`).
+| | |
+| --- | --- |
+| Mục tiêu | Nhật ký kiểm toán chỉ thêm trên PostgreSQL, phát hiện được sửa dữ liệu (AC-05) |
+| Sửa ở | `services/audit-admin`: `JdbcAuditStore` với migration `V2__audit_entries.sql` trong `audit_admin` (role của service chỉ có `INSERT`, `SELECT`); mỗi `AuditEntry` mang băm của nội dung nối với băm bản trước; thao tác kiểm cả chuỗi |
+| Code theo | `AuditRecorded` trong AsyncAPI; `IAuditStore` (không thêm hàm sửa, xóa) |
+| Xong khi | Bật `AuditTest.should_detect_a_modified_entry_through_the_hash_chain`; `should_have_no_way_to_change_or_remove_history_through_the_store_port` vẫn xanh; IT mới: `UPDATE` bằng role của service bị từ chối. `should_meet_the_query_time_and_retention_requirements` vẫn `@Disabled` |
 
-### D-04. Hiệu chỉnh trên read model (bắt buộc, M, 23/11, D2). Bản thu nhỏ.
+### D-13. Portal và app nhân viên gửi Bearer (N, M, D2, 20 đến 23/11 sáng)
 
-- **Phụ thuộc:** H4 (lược đồ, 13/11) và H12 (sự kiện thật, 20/11).
-- **Sửa ở:** `ProjectAttendanceEventUseCase` xử lý `AttendanceCorrected`.
-- **Xong khi:** bật được test `should_apply_a_correction_event_on_top_of_the_original`; quản đốc chỉ thấy nhà máy trong phạm vi của mình (đã có, giữ nguyên).
-- **Nếu B-06 trễ:** viết theo lược đồ trong AsyncAPI, test bằng sự kiện tự tạo.
-- **Không làm trong đợt này:** báo cáo theo nhóm và ca, xuất file, dashboard.
+| | |
+| --- | --- |
+| Mục tiêu | Hai ứng dụng web dùng JWT của identity; ba service trung tâm nhận Bearer |
+| Sửa ở | `apps/employee-app/src/lib/api.ts`, `apps/web-portal/src/lib/api.ts`, `identity.ts`: lưu `accessToken` từ câu trả lời đăng nhập, gửi `Authorization: Bearer`; token hết hạn thì về màn hình đăng nhập. Reporting, hr-integration, audit-admin: bean `PrincipalResolver` theo mẫu `UserQrConfig.principalResolver` |
+| Code theo | `docs/api/identity.openapi.yaml`; `TestTokens` cho test Java; token giả trong test vitest |
+| Chuyển tiếp | Ở profile `local`, ứng dụng web gửi **cả** Bearer **và** header dev: service đã có resolver ưu tiên Bearer, service chưa có vẫn đọc header. Vì vậy không phải chờ A-11 hay B-06 |
+| Xong khi | Test vitest: header `Authorization` được gửi, 401 đưa về đăng nhập; test MockMvc ở mỗi service trung tâm: Bearer hợp lệ được, token lạ 401. `npm test`, `npm run lint`, `npm run build` xanh ở cả hai app |
 
-### D-13. App nhân viên dùng JWT (nên có, S đến M, 23/11, D2 cùng C2)
+### D-14. Test kiosk trên Windows (N, S, D2, 23/11 chiều)
 
-- **Phụ thuộc:** H10 (C-04) và C-06.
-- **Sửa ở:** `apps/employee-app/src/lib/api.ts`: lưu token từ câu trả lời đăng nhập, gửi `Authorization: Bearer` thay cho `X-Subject`.
-- **Xong khi:** đăng ký thiết bị chạy bằng JWT; token hết hạn thì app đưa về màn hình đăng nhập.
-- **Việc đi kèm:** thử trang `/kiosk` bằng webcam thật và điện thoại thật qua `npm run dev:lan` (chưa được kiểm chứng tại thời điểm bàn giao); ghi kết quả vào runbook.
-- **Nếu C-04 trễ:** cắt phần JWT, vẫn làm phần thử webcam.
+`Journal` đã là `AutoCloseable`, nhưng `KioskAppTest` chưa đóng nó trong `@AfterEach`, nên trên Windows thư mục tạm không xóa được (`kiosk.db` bị khóa). **Xong khi:** `.\gradlew.bat :simulators:kiosk-simulator:test` xanh trên một máy Windows; bỏ dòng `-x :simulators:kiosk-simulator:test` trong [02-chay-local.md](02-chay-local.md). Không có máy Windows thì ghi "chưa kiểm chứng".
 
-### D-12. Hợp nhất báo cáo (bắt buộc, L, 23 đến 25/11, D1)
+### D-16. Thử trang `/kiosk` bằng webcam và điện thoại thật (T, D2, 24/11 trong tổng duyệt)
 
-- **Đầu vào:** bản nháp của bốn team trong `docs/report/`, hạn 20/11 (H13); số đo A-09 ngày 23/11.
-- **Việc:** cập nhật `docs/document.md` theo `docs/adr/README.md` mục 3; hợp nhất về một giọng văn; đánh số hình; viết phần Task 2 (module đã hiện thực, cách chạy, ảnh kết quả test và demo, URL GitHub); gom phần "Hạn chế và việc tiếp theo" từ [01-ke-hoach.md](01-ke-hoach.md) mục 5.
-- **Xong khi:** qua hết `docs/runbook/release-checklist.md`; PDF nộp ngày 25/11.
-- **Kiểm chéo:** mỗi khẳng định về hành vi trong báo cáo trỏ tới một test hoặc kịch bản demo có thật. Chạy lại 3 demo và chụp ảnh ở ngày 24/11, trên mã đã đóng băng.
+Chạy `npm run dev:lan`, quét QR trên điện thoại thật bằng webcam ([02-chay-local.md](02-chay-local.md) mục 5.4, 5.5); ghi kết quả vào `docs/runbook/troubleshooting.md`. Không đổi mã. Không có thiết bị thì bỏ, ghi vào phần hạn chế.
 
-## 5. Team D cần gì và nợ gì
+## 4. Đã xong, không cần làm lại
 
-| Chiều | Hạn (23:00) | Nội dung |
-| --- | --- | --- |
-| Giao cho A, B, C | 12/11 | D-01: compose chạy được |
-| Giao cho A, B, C | 16/11 | D-02: CI |
-| Nhận từ B | 13/11 | Lược đồ `AttendanceCorrected` |
-| Nhận từ C | 13/11 | Hợp đồng JWT |
-| Nhận từ B | 18/11 | B-02 (RabbitMQ thật), B-10 (`JdbcProcessedMessageStore`) |
-| Nhận từ C | 18/11 | `identity` cấp JWT |
-| Nhận từ B | 20/11 | Sự kiện `AttendanceCorrected` thật |
-| Nhận từ A, B, C | 20/11 | Bản nháp báo cáo |
-| Nhận từ A | 23/11 | Số đo kiểm thử tải |
-| Nhận từ A | luôn luôn | API kiosk `/kiosk/v1/**` ổn định |
-| Nhận từ C | luôn luôn | Định dạng token và API đăng ký thiết bị ổn định |
+| Story | Ở đâu |
+| --- | --- |
+| D-01 Kiểm chứng hạ tầng Docker | `docs/runbook/troubleshooting.md`, mục "Kết quả D-01" |
+| D-03 Consumer thật, DLQ, dedup JDBC | Xem hộp đầu tài liệu |
+| D-02 CI 5 job | `.github/workflows/ci.yml`; còn bảo vệ nhánh (ở trên) |
+| Reporting áp `AttendanceCorrected` | `ProjectionTest`, `AttendanceEventListenerIT` |
 
-Team D là **bên dùng** của gần như mọi hợp đồng. Khi A, B hoặc C mở PR đổi `docs/api`, một người của Team D phải duyệt.
+## 5. Kiểm tích hợp tùy chọn
+
+Team D điều phối các buổi kiểm tích hợp nhưng không story nào của team chờ chúng.
+
+| Mã | Ngày | Cùng team | Kiểm gì |
+| --- | --- | --- | --- |
+| I-3 | 19/11 | B | Hiệu chỉnh thật qua RabbitMQ: reporting áp, hr-integration gửi bản hiệu chỉnh |
+| I-4 | 23/11 | A, C | Audit từ user-qr, identity, gate-station vào `GET /admin/v1/audit` trên kho bền (D-08) |
+| I-5 | 23/11 | A, C | App và portal dùng Bearer trên profile mặc định, tới user-qr, gate-station và ba service trung tâm |
+| I-6 | 23/11 | cả nhóm | 8 service ở profile mặc định trên `make up`, chạy 3 demo (hiện **chưa kiểm chứng**, chỉ mới chạy trên `local`) |
+| I-7 | 23/11 | A | Đo tải A-09 trên stack Docker |
 
 ## 6. Bẫy cần tránh
 
-- **Consumer phải lũy đẳng.** Broker có thể giao một thông điệp hai lần. Mọi xử lý đi qua `IdempotentConsumer`; việc ghi nhớ "đã xử lý" và việc cập nhật dữ liệu phải cùng một transaction.
-- **Thông điệp đến sai thứ tự.** `Presence.supersededBy` so `aggregateVersion` để thông điệp cũ không đè trạng thái mới. Giữ cách này khi thêm loại sự kiện.
-- **HR không trả lời nghĩa là "chưa biết", không phải "thất bại".** Tra cứu trước khi gửi lại. Đây là cùng một nguyên tắc với cổng xoay ở Team A.
-- **Nhật ký kiểm toán không có hàm sửa hay xóa.** Có test kiểm điều này bằng reflection; đừng lách.
-- **Bộ xác thực offline của kiosk phải cùng quy tắc với `user-qr`.** Team C đổi quy tắc thì `OfflineVerifier` đổi theo, và ngược lại.
-- **Trang kiosk web không thay được `kiosk-simulator`.** Nó không có journal và không chịu được mất mạng. Demo ADR-11 phải dùng bản dòng lệnh.
-- **Hai ứng dụng web không tự đặt danh tính trong môi trường thật.** Header `X-Subject` là tạm; đừng trình bày nó như bảo mật.
-- **Sửa `docker`, `scripts`, CI là sửa cho cả nhóm.** Thử trên cả macOS và Windows trước khi hợp nhất; `local-stack.sh` và `local-stack.ps1` phải khởi động cùng một bộ service.
+- **Consumer phải lũy đẳng.** Ghi "đã xử lý" và cập nhật dữ liệu cùng một transaction.
+- **Thông điệp đến sai thứ tự.** So `aggregateVersion`; bản hiệu chỉnh có phiên bản lớn hơn bản gốc.
+- **HR không trả lời nghĩa là "chưa biết".** Tra cứu trước khi gửi lại.
+- **Nhật ký kiểm toán không có hàm sửa hay xóa.** Có test kiểm bằng reflection.
+- **Bộ xác thực offline của kiosk phải cùng quy tắc với `user-qr`** (`QrTokenPolicyContractTest`).
+- **Trang kiosk web không thay được `kiosk-simulator`.** Demo ADR-11 dùng bản dòng lệnh.
+- **Sửa `docker`, `scripts`, CI là sửa cho cả nhóm.** `local-stack.sh` và `local-stack.ps1` phải khởi động cùng một bộ service.
 
 ## 7. Phần báo cáo của Team D
 
-Ngoài việc hợp nhất (D-12), Team D tự viết và nộp bản nháp ngày 20/11:
-
-- Sơ đồ và mô tả tích hợp HR, triển khai.
-- Bằng chứng phía kiosk cho ADR-11 (P6: mất mạng, gửi bù, không gửi trùng) và ADR-12 (R2: bộ nhớ đệm chống dùng lại tại kiosk; R4: quy tắc gian lận).
-- Áp dụng SOLID trên mã của team, ví dụ: `IHrPayrollPort` với bản giả lập và bản HTTP (thay thế được), `IAuditStore` chỉ có thao tác thêm (interface thể hiện đúng ràng buộc), `FraudRule` (thêm quy tắc không sửa mã cũ).
-- Task 2 và một đoạn phản ánh.
+Viết trong D-12 (23 đến 25/11): sơ đồ và mô tả tích hợp HR, triển khai; bằng chứng phía kiosk cho ADR-11 (P6) và ADR-12 (R2, R4); SOLID (`IHrPayrollPort` với bản giả lập và bản HTTP, `IAuditStore` chỉ thêm, `FraudRule`); Task 2; một đoạn phản ánh.

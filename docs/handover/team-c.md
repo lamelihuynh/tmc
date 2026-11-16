@@ -1,21 +1,43 @@
 # Team C: User/QR và Identity
 
-Đọc [00-he-thong.md](00-he-thong.md) và làm xong [02-chay-local.md](02-chay-local.md) trước khi đọc tài liệu này.
+Đọc [00-he-thong.md](00-he-thong.md) và làm xong [02-chay-local.md](02-chay-local.md) trước khi đọc tài liệu này. Lịch chung: [01-ke-hoach.md](01-ke-hoach.md).
+
+> **Bạn có thể bắt đầu ngay (16/11)**
+>
+> **Đã có sẵn cho Team C** (bước gỡ phụ thuộc, nhánh `chore/x/decouple-teams`):
+>
+> - C-04 xong: identity cấp JWT ES256 15 phút (`LoginUseCase`, `NimbusAccessTokenIssuer`), `GET /.well-known/jwks.json` (`JwksController`); test `should_issue_a_signed_token_on_successful_login` đã bật.
+> - C-06 (bản thu nhỏ) xong: `platform/security` có `JwtPrincipalVerifier`, `PrincipalResolver`; user-qr nhận Bearer (`UserQrConfig.principalResolver`, `BearerTokenApiTest`); header dev chỉ còn ở `local`, `inmem`.
+> - `employees` trong gói đồng bộ: `IEmployeeDirectory` + `InMemoryEmployeeDirectory` (nạp từ `tmc.qr.employees`); C-02 chỉ còn thay adapter.
+> - Outbox sẵn cho audit (C-08): user-qr có bảng `outbox_events` (Flyway `V2__outbox_events.sql`) và bean `AuditOutbox`; identity có `AuditOutbox` trên outbox **trong bộ nhớ** (`OutboxConfig`); relay 2 giây, publisher RabbitMQ.
+> - `UserQrPersistenceIT` (3 test) xanh; contract test `QrTokenPolicyContractTest`, `EmployeeSeedContractTest`.
+>
+> **Lệnh:**
+>
+> ```bash
+> ./gradlew :services:user-qr:test :services:identity:test :simulators:device-simulator:test :platform:security:test
+> ./gradlew :services:user-qr:integrationTest      # cần Docker đang chạy (Testcontainers)
+> make up                                          # hạ tầng thật (PostgreSQL central đã có database user_qr và identity)
+> ```
+>
+> **Code theo:** `docs/api/user-qr.openapi.yaml`, `docs/api/identity.openapi.yaml`, `docs/api/attendance-events.asyncapi.yaml` (`AuditRecorded`, khóa `user-qr.AuditRecorded`, `identity.AuditRecorded`), `docs/api/fixtures/employee-seed.json`, `docs/api/fixtures/qr-token-policy.json`; trong test: `TestJwtKeys`, `TestTokens`, `PhoneSimulator`, `TmcContainers`.
+>
+> **Không chờ team nào.** Phần cần mã thật của team khác là kiểm tích hợp **tùy chọn** ở mục 5.
 
 ## 1. Nhiệm vụ của team
 
-Team C giữ **lòng tin của hệ thống**: ai là ai (đăng nhập), điện thoại nào thuộc về ai (khóa thiết bị), và một mã QR có thật hay không (xác thực token).
+Team C giữ **lòng tin của hệ thống**: ai là ai (đăng nhập, JWT), điện thoại nào thuộc về ai (khóa thiết bị), một mã QR có thật hay không, và ai còn được vào nhà máy (danh bạ nhân viên trong gói đồng bộ).
 
 | Sở hữu | Nội dung |
 | --- | --- |
-| `services/user-qr` (cổng 8083) | Đăng ký và thu hồi thiết bị, xác thực QR, gói đồng bộ khóa cho kiosk |
-| `services/identity` (cổng 8087) | Đăng nhập, khóa tài khoản, MFA |
+| `services/user-qr` (cổng 8083) | Đăng ký và thu hồi thiết bị, xác thực QR, gói đồng bộ (khóa, thu hồi, nhân viên) |
+| `services/identity` (cổng 8087) | Đăng nhập, khóa tài khoản, MFA, cấp JWT, JWKS |
 | `simulators/device-simulator` | Điện thoại giả lập dòng lệnh |
-| `platform/security` | `Role`, `Principal`, `Rbac`, `PrincipalHeaders` (cả bốn lead duyệt khi đổi) |
-| Hợp đồng | `docs/api/user-qr.openapi.yaml`; header danh tính trong `docs/conventions/api-design-guidelines.md` |
+| `platform/security` | `Role`, `Principal`, `Rbac`, `PrincipalHeaders`, `PrincipalResolver`, `jwt/*` (cả bốn lead duyệt khi đổi) |
+| Hợp đồng | `docs/api/user-qr.openapi.yaml`, `docs/api/identity.openapi.yaml` |
 | Tài liệu | ADR-08, ADR-09, ADR-12, `docs/architecture/privacy-notes.md`, phần "QR tĩnh" của báo cáo |
 
-Phối hợp với Team D trên `apps/employee-app`: app này hiện thực phía điện thoại của ADR-12 bằng WebCrypto, và phải khớp từng byte với những gì `user-qr` chấp nhận.
+Hai người: **C1** (lead) giữ identity và audit; **C2** giữ user-qr, MFA và mô hình đe dọa.
 
 ## 2. Bản đồ mã
 
@@ -23,166 +45,144 @@ Phối hợp với Team D trên `apps/employee-app`: app này hiện thực phí
 
 | Gói | Lớp chính | Việc |
 | --- | --- | --- |
-| `domain` | `Device`, `DeviceStatus` | Thiết bị và khóa công khai; mỗi nhân viên tối đa một thiết bị `ACTIVE` |
-| | `QrClaims` | Sáu claim được phép: `sub`, `jti`, `iat`, `exp`, `fac`, `nonce` |
-| | **`TokenVerificationPolicy`** | Quy tắc thời gian: sống tối đa 60 giây, lệch đồng hồ tối đa 60 giây |
-| `application.usecase` | **`VerifyQrTokenUseCase`** | Thứ tự kiểm: định dạng, thiết bị, trạng thái, chủ sở hữu, chữ ký, thời gian |
-| | `DeviceManagementService` | Đăng ký, tự thu hồi, HR thu hồi; có kiểm quyền và audit |
-| | `BuildSyncBundleUseCase` | Khóa và thu hồi thay đổi sau một mốc thời gian |
-| `application.port.out` | `ITokenCodec`, `IDeviceKeyRegistry`, `IAuditLog` | |
-| `adapter.in.rest` | `DeviceController`, `QrVerifyController` | `/self-service/v1/devices`, `/hr/v1/...`, `/internal/v1/qr/verify`, `/internal/v1/sync-bundle` |
-| `adapter.out.crypto` | `NimbusTokenCodec` | Đọc JWS, chỉ nhận ES256, từ chối claim lạ |
-| `adapter.out.inmem` | `InMemoryDeviceKeyRegistry`, `LoggingAuditLog` | Test và profile `local` |
-| `adapter.out.persistence` | `JdbcDeviceKeyRegistry` | PostgreSQL, **chưa kiểm chứng** |
+| `domain` | `Device`, `QrClaims`, **`TokenVerificationPolicy`** | Thiết bị; sáu claim được phép; sống tối đa 60 giây, lệch đồng hồ tối đa 60 giây |
+| `application.usecase` | **`VerifyQrTokenUseCase`**, `DeviceManagementService`, `BuildSyncBundleUseCase` | Xác thực; đăng ký và thu hồi; gói đồng bộ |
+| `application.port.out` | `ITokenCodec`, `IDeviceKeyRegistry`, `IEmployeeDirectory`, `IAuditLog` | |
+| `adapter.out.inmem` | `InMemoryDeviceKeyRegistry`, `InMemoryEmployeeDirectory`, `LoggingAuditLog` | Test và profile `local` |
+| `adapter.out.persistence` | `JdbcDeviceKeyRegistry` | PostgreSQL, có `UserQrPersistenceIT` |
+| `bootstrap` | `UserQrConfig`, `OutboxConfig` | Nối adapter, resolver JWT, outbox |
 
 ### identity: `services/identity/src/main/java/vn/tmc/identity/`
 
 | Gói | Lớp chính | Việc |
 | --- | --- | --- |
-| `domain` | `Account` | Khóa 15 phút sau 5 lần sai; `HR_STAFF` và `SYSTEM_ADMIN` bắt buộc MFA |
-| `application.usecase` | `AuthenticateUseCase` | Luồng đăng nhập; không tiết lộ tài khoản có tồn tại hay không |
-| `application.port.out` | `IAccountRepository`, `IPasswordVerifier`, `IMfaVerifier` | |
-| `adapter.in.rest` | `AuthController` | `POST /auth/v1/login` |
-| `adapter.out.inmem` | `InMemoryAccountRepository`, `Pbkdf2PasswordVerifier` | Chỉ lưu băm PBKDF2 có muối |
-| `bootstrap` | `IdentityConfig` | Tài khoản mẫu: `supervisor1`, `admin1`, `nv001` đến `nv005` |
+| `domain` | `Account` | Khóa 15 phút sau 5 lần sai; `HR_STAFF`, `SYSTEM_ADMIN` bắt buộc MFA |
+| `application.usecase` | `AuthenticateUseCase`, `LoginUseCase` | Đăng nhập; cấp token |
+| `application.port.out` | `IAccountRepository`, `IPasswordVerifier`, `IMfaVerifier`, `IAccessTokenIssuer` | |
+| `adapter.in.rest` | `AuthController`, `JwksController` | `POST /auth/v1/login`, `GET /.well-known/jwks.json` |
+| `adapter.out` | `InMemoryAccountRepository`, `Pbkdf2PasswordVerifier`, `NimbusAccessTokenIssuer` | |
+| `bootstrap` | `IdentityConfig`, `DevSeed`, `OutboxConfig` | Tài khoản mẫu `supervisor1`, `admin1`, `nv001` đến `nv005`; khóa ký `IDENTITY_JWT_PRIVATE_JWK` (trống thì tự sinh, chỉ dev) |
 
-**Hiện trạng đăng nhập:** `AuthController` trả `status`, và khi thành công trả thêm `subject` cùng `roles` ở dạng JSON không ký. Đây là giải pháp tạm để app nhân viên chạy được; C-04 thay nó bằng JWT.
+## 3. Việc phải làm (16/11 đến 24/11)
 
-## 3. Chạy và kiểm thử phần của team
+**Mọi hạn là 23:00 của ngày cuối**, tính theo lúc PR hợp nhất vào `main`. Mức: **B** bắt buộc, **N** nên có.
 
-```bash
-./gradlew :services:user-qr:test :services:identity:test :simulators:device-simulator:test :platform:security:test
-./gradlew :services:user-qr:test --tests '*Adr12TokenVerificationTest'
-./gradlew :services:user-qr:integrationTest      # cần Docker, sau khi C-01 thêm vào
-```
+| Story | Mức | Người | Bắt đầu | Hạn |
+| --- | --- | --- | --- | --- |
+| C-08 Audit của user-qr và identity qua `AuditOutbox` | B | C1 | 16/11 | 17/11 |
+| C-11 Database cho identity, outbox bền | N | C1 | 18/11 | 19/11 |
+| C-12 Xoay khóa ký JWT | N | C1 | 20/11 | 20/11 |
+| C-01 (phần còn lại) Hai đăng ký song song | B | C2 | 16/11 sáng | 16/11 |
+| C-02 Nguồn HR cho danh bạ nhân viên | B | C2 | 16/11 chiều | 18/11 |
+| C-05 TOTP cho MFA | B | C2 | 19/11 | 19/11 |
+| C-10 Mô hình đe dọa và ghi chú riêng tư | B | C2 | 20/11 | 20/11 |
+| R-C Phần báo cáo "QR tĩnh" | B | C2 (nháp cùng C-10), C1 và C2 hoàn thiện 23/11 | 20/11 (nháp) | 24/11 (bản cuối) |
 
-| Lớp test | Kiểm gì |
+Ngày 23/11: hoàn thiện báo cáo, tham gia kiểm tích hợp. Ngày 24/11: đóng băng mã lúc 23:00, chỉ sửa lỗi; tổng duyệt demo.
+
+### C-08. Audit của user-qr và identity qua `AuditOutbox` (B, M, C1, 16 đến 17/11)
+
+| | |
 | --- | --- |
-| `Adr12TokenVerificationTest` | Chữ ký, thiết bị lạ, thiết bị bị thu hồi, hết hạn, lệch đồng hồ, token 24 giờ, token chứa tên |
-| `SyncBundleTest` | Gói đồng bộ chứa khóa mới và thu hồi sau mốc |
-| `DeviceAndVerifyApiTest` | API qua MockMvc |
-| `AuthenticationTest` | Khóa tài khoản, MFA, băm mật khẩu; **4 test đang `@Disabled` chờ team bật** |
-| `TokenSignerTest` | Token của `device-simulator` |
-| `PrincipalHeadersTest`, `RbacTest` | Thư viện phân quyền |
+| Mục tiêu | Đăng ký, thu hồi thiết bị và đăng nhập (thành công, thất bại, khóa tài khoản) thành sự kiện `AuditRecorded` trên `tmc.events`, không chỉ ghi log |
+| Sửa ở | user-qr: adapter `IAuditLog` bọc `AuditOutbox` (thay `LoggingAuditLog` ở profile mặc định), bọc thay đổi thiết bị và dòng outbox trong cùng transaction. identity: port ra mới cho audit (identity chưa có `IAuditLog`), gọi từ `AuthenticateUseCase`, adapter bọc `AuditOutbox` |
+| Code theo | `platform/messaging` (`AuditOutbox`, `AuditEvents`); `UserQrPersistenceIT.should_keep_audit_events_in_the_outbox_table_of_v2`; không chứa họ tên, token, mật khẩu (ADR-09) |
+| Xong khi | Test user-qr (IT): đăng ký thiết bị ghi đúng một dòng outbox; lỗi giữa chừng thì không có thiết bị lẫn dòng outbox. Test identity: đăng nhập sai 5 lần sinh sự kiện khóa tài khoản, không chứa mật khẩu. `./gradlew :services:user-qr:integrationTest :services:identity:test` xanh |
 
-`PhoneSimulator` (trong `services/user-qr/src/test/.../support`) là điện thoại giả cho test: có cặp khóa và ký token như app thật.
+### C-11. Database cho identity, outbox bền (N, M, C1, 18 đến 19/11)
 
-Thử tay:
+| | |
+| --- | --- |
+| Mục tiêu | Sự kiện audit của identity không mất khi identity khởi động lại |
+| Sửa ở | identity: datasource cho database `identity` (đã tạo trong `docker/init/central/01-databases.sql`), Flyway `V1__outbox_events.sql` (lấy từ `platform/messaging/src/main/resources/tmc-messaging/outbox_events.sql`), `JdbcOutboxStore` ở profile mặc định; giữ outbox bộ nhớ ở `local`, `inmem` |
+| Code theo | Mẫu `services/user-qr/.../bootstrap/OutboxConfig.java`; `TmcContainers` |
+| Xong khi | Test IT mới của identity: đăng nhập ghi dòng outbox vào PostgreSQL; dừng relay, tạo lại context, dòng vẫn `PENDING` và được phát sau đó. `./gradlew :services:identity:integrationTest` xanh |
 
-```bash
-# đăng nhập
-curl -s -X POST http://localhost:8087/auth/v1/login -H 'Content-Type: application/json' \
-  -d '{"username":"nv001","password":"dev-only-change-me"}'
+### C-12. Xoay khóa ký JWT (N, S đến M, C1, 20/11)
 
-# điện thoại giả lập
-D=simulators/device-simulator/build/install/device-sim/bin/device-sim
-$D keygen --name p1 --employee 0192a1c0-0000-7000-8000-000000000001 --home /tmp/phones
-$D register --name p1 --home /tmp/phones --user-qr http://localhost:8083
-$D token --name p1 --home /tmp/phones                 # thêm --long-lived hoặc --pii để thử từ chối
-```
+| | |
+| --- | --- |
+| Mục tiêu | Đổi khóa ký mà token cũ còn hạn vẫn kiểm được (NFR-03, `identity.openapi.yaml` mục JWKS) |
+| Sửa ở | identity: cấu hình khóa hiện tại và khóa trước (ví dụ `IDENTITY_JWT_PREVIOUS_PUBLIC_JWK`), JWKS trả cả hai `kid`; `platform/security` không cần đổi nếu verifier chọn khóa theo `kid` (kiểm trước) |
+| Code theo | `TestJwtKeys`, `JwtPrincipalVerifier` |
+| Xong khi | Test: token ký bằng khóa cũ còn hạn được chấp nhận sau khi đổi khóa; JWKS có hai khóa; bỏ khóa cũ thì token đó bị từ chối |
 
-Kiểm tra phía trình duyệt: `cd apps/employee-app && npm test` chạy `token.test.ts`, kiểm token do WebCrypto ký có đúng định dạng JWS ES256.
+### C-01 (phần còn lại). Hai đăng ký song song (B, S, C2, 16/11 sáng)
 
-## 4. Việc phải làm
+| | |
+| --- | --- |
+| Mục tiêu | `UserQrPersistenceIT.should_refuse_a_second_active_device_for_the_same_employee` đã chứng minh chỉ mục duy nhất; còn hai luồng đăng ký **đồng thời** và câu trả lời có nghĩa |
+| Sửa ở | `DeviceManagementService.register` (thu hồi cũ và lưu mới trong một transaction), ánh xạ lỗi vi phạm chỉ mục thành 409 |
+| Code theo | `user-qr.openapi.yaml` (thêm mã 409 nếu chưa có) |
+| Xong khi | Test IT: hai luồng cùng đăng ký cho một nhân viên, đúng một bên thắng, bên kia nhận 409, không còn hai thiết bị `ACTIVE` |
 
-**Mọi hạn là 23:00 của ngày được ghi**, tính theo thời điểm PR hợp nhất vào `main`. Khi một story ghi khoảng ngày (ví dụ "16 đến 17/11"), hạn là 23:00 của ngày cuối. Toàn cảnh lịch: [03-gantt.md](03-gantt.md).
+### C-02. Nguồn HR cho danh bạ nhân viên (B, L, C2, 16/11 chiều đến 18/11)
 
-### Hợp đồng JWT (12 đến 13/11, C1). **Cả ba team còn lại đang chờ.**
+| | |
+| --- | --- |
+| Mục tiêu | `employees` trong gói đồng bộ lấy từ dữ liệu HR bền, không từ cấu hình `tmc.qr.employees` |
+| Sửa ở | `IEmployeeDirectory` thêm thao tác ghi; adapter JDBC mới với migration `V3__employees.sql` trong `user_qr`; endpoint HR đổi `status` và `factories` (kiểm vai `HR_STAFF` bằng `PrincipalResolver`, ghi audit qua C-08); vô hiệu hóa nhân viên thì thu hồi thiết bị; nạp dữ liệu mẫu từ `docs/api/fixtures/employee-seed.json` |
+| Code theo | `employees[]` trong `GET /internal/v1/sync-bundle` của `user-qr.openapi.yaml` (đã chốt: `employeeUuid`, `status`, `factories`, `updatedAt`); endpoint HR mới thêm vào cùng tệp trong cùng PR |
+| Xong khi | `SyncBundleTest` mở rộng: đổi trạng thái thì lần đồng bộ sau (`since`) trả `status: INACTIVE`; thiết bị bị thu hồi; `EmployeeSeedContractTest` vẫn xanh; IT JDBC xanh. Test `@Disabled` `should_publish_employee_eligibility_for_the_edge` của identity: chuyển sang user-qr hoặc xóa kèm ghi chú trong PR (yêu cầu đã nằm ở user-qr) |
+| Phạm vi | Không làm vòng đời nhân viên đầy đủ (C-03 bị cắt) |
 
-Trước khi viết mã C-04, chốt và công bố hợp đồng để các team khác chuẩn bị:
+### C-05. TOTP cho MFA (B, M, C2, 19/11)
 
-- Thuật toán ES256; claim: `sub` (UUID), `roles`, `scope` (nhà máy, cổng), `iat`, `exp`, `jti`.
-- Thời hạn token và cách hết hạn sau 15 phút không hoạt động.
-- Đường dẫn `/.well-known/jwks.json`; cách xoay khóa.
-- Dạng mới của câu trả lời `POST /auth/v1/login`.
-- Một cặp khóa và một token mẫu dùng cho test của team khác.
+| | |
+| --- | --- |
+| Mục tiêu | `HR_STAFF`, `SYSTEM_ADMIN` đăng nhập được bằng mã TOTP thật (RFC 6238) |
+| Sửa ở | Adapter mới hiện thực `IMfaVerifier`, thay bản luôn từ chối trong `IdentityConfig`; bí mật TOTP của tài khoản mẫu chỉ cho dev |
+| Code theo | `AuthenticationTest.should_require_mfa_for_hr_staff_and_system_admin` |
+| Xong khi | Test: mã đúng, mã sai, mã của bước liền trước và liền sau, mã đã dùng không dùng lại được |
 
-**Nộp ở:** một tệp OpenAPI cho identity trong `docs/api/` và cập nhật `docs/conventions/api-design-guidelines.md`. **Hạn: 23:00 ngày 13/11.**
+### C-10. Mô hình đe dọa và ghi chú riêng tư (B, M, C2, 20/11)
 
-### Hợp đồng `employees` trong gói đồng bộ (13/11, C2). **Team A đang chờ.**
+| | |
+| --- | --- |
+| Mục tiêu | Bảng STRIDE ngắn cho luồng QR và đăng nhập: chụp màn hình, chuyển tiếp ảnh, mất điện thoại, giả mạo thiết bị, lệch đồng hồ, kiosk bị can thiệp, token JWT bị lộ |
+| Sửa ở | `docs/architecture/privacy-notes.md`, phần "QR tĩnh" trong `docs/report/` |
+| Xong khi | Mỗi dòng trỏ tới một test có thật (ví dụ `Adr12TokenVerificationTest`, `QrTokenPolicyContractTest`, `BearerTokenApiTest`) hoặc một chế độ kiểm thử của app nhân viên ([02-chay-local.md](02-chay-local.md) mục 5.3) |
 
-Thêm vào `user-qr.openapi.yaml` trường `employees` của `GET /internal/v1/sync-bundle`: mỗi phần tử có `employeeUuid`, `active`, `factories`, `updatedAt`. Chỉ có định danh và quyền, không có họ tên (ADR-09). **Hạn: 23:00 ngày 13/11.**
+### R-C. Phần báo cáo "QR tĩnh" (nháp 20/11, bản cuối 24/11)
 
-### C-10. Mô hình đe dọa và ghi chú riêng tư (bắt buộc, M, 12 đến 20/11, C2 làm xen kẽ)
+- **Issues Encountered: QR tĩnh.** Mối đe dọa, QR động ký bằng khóa thiết bị (ADR-12), bốn lớp chống dùng lại và lớp nào đã có, đánh đổi, bằng chứng (`Adr12TokenVerificationTest`, `demo-online`, chế độ kiểm thử của app nhân viên).
+- Bảng mô hình đe dọa của C-10; cập nhật NFR-05 và UC-07 theo `docs/adr/README.md` mục 3; sơ đồ bảo mật (đăng ký thiết bị, ký token, xác thực, JWT).
+- SOLID: `ITokenCodec`, `IMfaVerifier` (thay bản giả bằng TOTP không sửa `AuthenticateUseCase`), `TokenVerificationPolicy`. Một đoạn phản ánh.
 
-- **Việc:** bảng STRIDE ngắn cho luồng QR: chụp màn hình, chuyển tiếp ảnh, mất điện thoại, giả mạo thiết bị, lệch đồng hồ, kiosk bị can thiệp. Mỗi mối đe dọa ghi biện pháp và **tên test** chứng minh.
-- **Sửa ở:** `docs/architecture/privacy-notes.md` và phần "QR tĩnh" của báo cáo.
-- **Xong khi:** mỗi dòng trỏ được tới một test hoặc một chế độ kiểm thử trong app nhân viên (runbook mục 5.3).
+## 4. Đã xong hoặc đã cắt
 
-### C-04. Cấp JWT (bắt buộc, L, 13 đến 18/11, C1). **Team D đang chờ.**
+| Story | Trạng thái |
+| --- | --- |
+| C-04 Cấp JWT, JWKS | Xong (xem hộp đầu tài liệu) |
+| C-06 Xác thực JWT ở service | Xong cho user-qr. Gate-station (A-11), attendance (B-06) và ba service trung tâm (D-13) tự gắn theo mẫu |
+| Test `should_expire_an_idle_session` | Còn `@Disabled`: token sống 15 phút, chưa có làm mới theo hoạt động. Ghi vào phần hạn chế; làm nếu còn thời gian |
+| C-03, C-07, C-09 | Cắt khỏi đợt này (`should_end_open_sessions_when_a_role_changes` vẫn `@Disabled`) |
 
-- **Sửa ở:** `AuthenticateUseCase` và `AuthController` trả token khi `GRANTED`; port ra mới để ký token (ví dụ `ITokenIssuer`) với adapter dùng Nimbus; controller mới cho `/.well-known/jwks.json`.
-- **Xong khi:** bật được hai test `@Disabled`: `should_issue_a_signed_token_on_successful_login` và `should_expire_an_idle_session`; token hết hạn bị từ chối; JWKS trả khóa công khai và đổi được khóa mà token cũ vẫn kiểm được trong thời gian chuyển tiếp.
-- **Giữ tương thích:** trong đợt này giữ nguyên các trường `subject` và `roles` trong câu trả lời đăng nhập, thêm trường `token`. App nhân viên và portal chuyển sang JWT ở D-13; bỏ trường cũ là việc sau.
-- **Khóa ký:** lấy từ cấu hình hoặc sinh lúc khởi động cho môi trường phát triển. Không đưa khóa riêng vào repo.
+## 5. Kiểm tích hợp tùy chọn
 
-### C-01. Kiểm chứng `JdbcDeviceKeyRegistry` (bắt buộc, M, 16 đến 17/11, C2)
+| Mã | Ngày | Cùng team | Kiểm gì |
+| --- | --- | --- | --- |
+| I-2 | 19/11 | A | Đổi trạng thái nhân viên ở user-qr, cổng từ chối sau tối đa 30 giây |
+| I-4 | 23/11 | A, D | Đăng ký và thu hồi thiết bị xuất hiện trong `GET /admin/v1/audit` |
+| I-5 | 23/11 | A, D | App nhân viên và portal dùng Bearer trên profile mặc định; JWKS được gate-station và service trung tâm đọc |
 
-- **Sửa ở:** thêm `src/test/.../adapter/DeviceRegistryIT.java` gắn thẻ `@Tag("integration")`, dùng Testcontainers PostgreSQL và chạy migration `V1__device_registry.sql`.
-- **Xong khi** có test chứng minh: lưu rồi đọc lại khóa công khai giống bản gốc; `changedSince` đúng thứ tự; **hai lệnh đăng ký song song cho một nhân viên thì chỉ mục duy nhất `uq_one_active_device_per_employee` từ chối một bên**.
-- **Điểm cần xử lý:** `DeviceManagementService.register` thu hồi thiết bị cũ rồi lưu thiết bị mới bằng hai lệnh riêng. Với PostgreSQL, hai lệnh này cần nằm trong một transaction, và lỗi vi phạm chỉ mục phải thành câu trả lời có nghĩa (409), không phải 500.
+Không story nào ở trên chờ những mục này.
 
-### C-02. Nhân viên đủ quyền trong gói đồng bộ (bắt buộc, L, 17 đến 19/11, C2). **Team A đang chờ.**
+## 6. Hợp đồng Team C giữ ổn định
 
-Gate-station hiện đọc danh sách nhân viên từ `application.yml`. Nguồn đúng phải là user-qr.
+| Cho ai | Hợp đồng |
+| --- | --- |
+| Team A | `POST /internal/v1/qr/verify` giữ tên trường (`valid`, `reason`, `employeeUuid`, `jti`, `expiresAt`, `factories`); `employees` trong sync bundle giữ định dạng |
+| Team D | `POST /self-service/v1/devices`, định dạng token QR (`qr-token-policy.json`), câu trả lời đăng nhập (`accessToken`, `subject`, `roles` vẫn giữ) |
+| Mọi team | Claim JWT, `iss`, `aud`, đường dẫn JWKS trong `identity.openapi.yaml` |
 
-- **Sửa ở:** thực thể mới trong `domain` (ví dụ `EmployeeEligibility`: UUID, `active`, `factories`, `updatedAt`), port ra và hai adapter (bộ nhớ, JDBC kèm migration `V2`), mở rộng `ISyncBundle.Bundle` và `BuildSyncBundleUseCase`. Dữ liệu mẫu trùng với 5 nhân viên trong `application.yml` của gate-station.
-- **Xong khi:** `GET /internal/v1/sync-bundle?since=...` trả `employees` thay đổi sau mốc; vô hiệu hóa một nhân viên thì thiết bị của người đó bị thu hồi và lần đồng bộ sau trả `active: false`.
-- **Phạm vi:** không làm đầy đủ vòng đời nhân viên (C-03 đã cắt). Chỉ cần một endpoint cho HR đổi `active` và `factories`, có kiểm quyền và audit.
+**Đổi quy tắc xác thực token QR thì phải đổi ở ba nơi cùng lúc:** `VerifyQrTokenUseCase`, `OfflineVerifier` của `kiosk-simulator` (Team D), và phía ký trong `device-simulator` lẫn `apps/employee-app`. `QrTokenPolicyContractTest` đỏ là dấu hiệu lệch.
 
-### C-06. Xác thực JWT ở service (bắt buộc, M, 19 đến 20/11, C1). Bản thu nhỏ.
+## 7. Bẫy cần tránh
 
-- **Sửa ở:** `platform/security`: bộ xác thực nhận token và JWKS, trả `Principal`. Áp dụng cho `user-qr` qua `HeaderPrincipalResolver`: có `Authorization: Bearer` thì xác thực token; không có thì, **chỉ ở profile phát triển**, vẫn đọc header `X-Subject`.
-- **Xong khi:** gọi `/self-service/v1/devices` với token hợp lệ thì được; token sai chữ ký hoặc hết hạn thì 401; ở profile mặc định, header `X-Subject` giả bị bỏ qua.
-- **Phạm vi:** chỉ `user-qr`. Các service khác giữ header, ghi vào phần hạn chế của báo cáo.
-- **Lưu ý:** `platform/security` là mã dùng chung, PR cần cả bốn lead duyệt. Không kéo Spring vào thư viện này.
-
-### C-05. TOTP cho MFA (bắt buộc, M, 20/11, C2). Cắt thứ hai nếu trễ.
-
-- **Sửa ở:** adapter mới hiện thực `IMfaVerifier` theo RFC 6238, thay cho bản luôn từ chối trong `IdentityConfig`.
-- **Xong khi:** test mã đúng, mã sai, mã của bước thời gian liền trước và liền sau; mã đã dùng không dùng lại được.
-
-### C-08. Audit qua outbox (bắt buộc, M, 23/11, C1). Cắt đầu tiên nếu trễ.
-
-- **Phụ thuộc:** H8 (B-02, 18/11).
-- **Việc:** thay `LoggingAuditLog` của user-qr và identity bằng adapter ghi sự kiện `AuditRecorded` vào outbox rồi phát lên broker, để `audit-admin` nhận được.
-- **Xong khi:** đăng ký và thu hồi thiết bị xuất hiện trong `GET /admin/v1/audit`; broker tắt thì không mất.
-
-### D-13 (phối hợp với Team D, 23/11, C2)
-
-Chuyển `apps/employee-app` sang JWT: lưu token sau khi đăng nhập, gửi `Authorization: Bearer` khi đăng ký thiết bị. Team D sửa app, Team C kiểm phía server. Chỉ làm khi C-04 và C-06 đã xong.
-
-## 5. Team C cần gì và nợ gì
-
-| Chiều | Hạn (23:00) | Nội dung |
-| --- | --- | --- |
-| Giao cho A, B, D | 13/11 | Hợp đồng JWT |
-| Giao cho A | 13/11, 19/11 | Hợp đồng rồi dữ liệu `employees` trong sync bundle |
-| Giao cho D | 18/11 | `identity` cấp JWT và có JWKS |
-| Giao cho D | 20/11 | Bản nháp báo cáo |
-| Giao cho A | luôn luôn | `POST /internal/v1/qr/verify` giữ nguyên tên trường (`valid`, `reason`, `employeeUuid`, `jti`, `expiresAt`, `factories`) |
-| Giao cho D | luôn luôn | `POST /self-service/v1/devices` và định dạng token giữ nguyên; `kiosk-simulator`, `device-simulator` và app nhân viên phụ thuộc vào chúng |
-| Nhận từ B | 18/11 | Outbox phát được lên RabbitMQ (cho C-08) |
-| Nhận từ D | 12/11, 16/11 | Compose chạy được; CI |
-
-**Đổi quy tắc xác thực token thì phải đổi ở ba nơi cùng lúc:** `VerifyQrTokenUseCase` (online), bộ xác thực offline của `kiosk-simulator` (Team D), và phía ký trong `device-simulator` lẫn `apps/employee-app`. Ba nơi lệch nhau thì token hợp lệ khi có mạng nhưng bị từ chối khi mất mạng, hoặc ngược lại.
-
-## 6. Bẫy cần tránh
-
-- **`user-qr` chỉ đọc, không đánh dấu token đã dùng.** Việc dùng một lần thuộc về `ITokenReservation` của gate-station, vì khi cổng lỗi thì token phải nhả được. Đừng thêm kho chống dùng lại vào user-qr.
-- **Từ chối theo mặc định.** Mọi lỗi bất ngờ khi xác thực phải thành "từ chối", không bao giờ thành "hợp lệ".
-- **Không dữ liệu cá nhân trong token, sự kiện, hay log.** Chỉ dùng UUID. `NimbusTokenCodec` từ chối mọi claim ngoài sáu claim cho phép; giữ nguyên điều đó.
-- **Đăng nhập không tiết lộ tài khoản có tồn tại hay không.** Sai tên và sai mật khẩu trả cùng một câu trả lời; khi từ chối, câu trả lời không chứa `subject` hay `roles`.
-- **Khóa riêng không rời điện thoại và không vào repo.** Server chỉ giữ khóa công khai.
-- **Header `X-Subject` không phải bảo mật.** Bất kỳ ai cũng tự đặt được. Trong báo cáo, mô tả nó là cơ chế phát triển tạm thời.
-
-## 7. Phần báo cáo của Team C
-
-Nộp bản nháp ngày 20/11 vào `docs/report/`:
-
-- **Issues Encountered: QR tĩnh.** Mối đe dọa của QR tĩnh, lời giải QR động ký bằng khóa thiết bị (ADR-12), bốn lớp chống dùng lại và lớp nào đã có, đánh đổi (cần điện thoại, cần đồng bộ giờ, một thiết bị mỗi người), bằng chứng: tên test trong `Adr12TokenVerificationTest`, `demo-online`, và các chế độ kiểm thử của app nhân viên.
-- Bảng mô hình đe dọa của C-10.
-- Cập nhật NFR-05 và UC-07 theo `docs/adr/README.md` mục 3.
-- Sơ đồ bảo mật: đăng ký thiết bị, ký token, xác thực.
-- Áp dụng SOLID trên mã của team, ví dụ: `ITokenCodec` tách thư viện JOSE khỏi use case, `IMfaVerifier` thay được bản giả bằng TOTP mà không sửa `AuthenticateUseCase`, `TokenVerificationPolicy` là quy tắc thuần không phụ thuộc hạ tầng.
-- Một đoạn phản ánh.
+- **`user-qr` chỉ đọc, không đánh dấu token đã dùng.** Việc dùng một lần thuộc về `ITokenReservation` của gate-station.
+- **Từ chối theo mặc định.** Mọi lỗi bất ngờ khi xác thực phải thành "từ chối".
+- **Không dữ liệu cá nhân trong token, sự kiện, log.** Chỉ dùng UUID; sự kiện audit chỉ có mã lý do.
+- **Đăng nhập không tiết lộ tài khoản có tồn tại hay không.**
+- **Khóa riêng không vào repo.** Khóa ký JWT lấy từ biến môi trường; khóa thiết bị không rời điện thoại.
+- **Header `X-Subject` không phải bảo mật.** Chỉ được tin ở profile `local`, `inmem`.

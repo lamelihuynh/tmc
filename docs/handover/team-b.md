@@ -1,6 +1,29 @@
 # Team B: Attendance
 
-Đọc [00-he-thong.md](00-he-thong.md) và làm xong [02-chay-local.md](02-chay-local.md) trước khi đọc tài liệu này.
+Đọc [00-he-thong.md](00-he-thong.md) và làm xong [02-chay-local.md](02-chay-local.md) trước khi đọc tài liệu này. Lịch chung: [01-ke-hoach.md](01-ke-hoach.md).
+
+> **Bạn có thể bắt đầu ngay (16/11)**
+>
+> **Đã có sẵn cho Team B** (bước gỡ phụ thuộc, nhánh `chore/x/decouple-teams`):
+>
+> - B-04, B-05 xong: `AttemptView` có `employeeUuid`, `direction`; `GET /internal/v1/employees/{employeeUuid}/last-direction`.
+> - Nền của B-06: `AttendanceCorrection`, `IAttendanceCorrectionRepository` với `InMemoryAttendanceCorrectionRepository` và `JdbcAttendanceCorrectionRepository`, migration `V2__attendance_corrections.sql`, `AttendanceEventFactory.attendanceCorrected` và `correctedVersion`, test `AttendanceCorrectedEventTest`.
+> - Phát sự kiện lên exchange `tmc.events` (ADR-15) bằng `AmqpEnvelopePublisher` của `platform/messaging`; B-10 (`JdbcProcessedMessageStore`) đã nằm trong `platform/messaging`.
+> - `PersistenceAndBrokerIT` (8 test) xanh với PostgreSQL thật.
+> - Consumer thật của Team D đã nghe `attendance.*`; Team B không phải chờ hay báo ai khi phát thêm sự kiện đúng hợp đồng.
+>
+> **Lệnh:**
+>
+> ```bash
+> ./gradlew :services:attendance:test                    # không cần Docker
+> ./gradlew :services:attendance:integrationTest         # cần Docker đang chạy (Testcontainers)
+> make up                                                # hạ tầng thật để chạy service; lỗi database cũ: make nuke && make up
+> ./gradlew :services:attendance:bootRun                 # profile mặc định, PostgreSQL edge và RabbitMQ
+> ```
+>
+> **Code theo:** `docs/api/internal-attendance.openapi.yaml`, `docs/api/attendance-events.asyncapi.yaml` (kênh `attendance.AttendanceCorrected`, schema `CorrectionPayload`), `docs/api/identity.openapi.yaml` (vai trò trong JWT); trong test: `AttendanceFixture` với `MutableClock`, `TestTokens` (`platform/security` testFixtures), `TmcContainers`.
+>
+> **Không chờ team nào.** Phần cần mã thật của team khác là kiểm tích hợp **tùy chọn** ở mục 5.
 
 ## 1. Nhiệm vụ của team
 
@@ -8,11 +31,11 @@ Team B giữ **sổ cái của hệ thống**: mọi lượt quét, trạng thá
 
 | Sở hữu | Nội dung |
 | --- | --- |
-| `services/attendance` (cổng 8082) | Máy trạng thái lượt quét, bản ghi công, outbox, nhập lô offline, phục hồi, đối soát |
+| `services/attendance` (cổng 8082) | Máy trạng thái lượt quét, bản ghi công, hiệu chỉnh, outbox, nhập lô offline, phục hồi, đối soát |
 | Hợp đồng | `docs/api/internal-attendance.openapi.yaml`, `docs/api/attendance-events.asyncapi.yaml` |
-| Tài liệu | ADR-11, `docs/architecture/state-machine.md`, phần "mất kết nối" của báo cáo |
+| Tài liệu | ADR-11, `docs/architecture/state-machine.md`, phần "mất kết nối" của báo cáo (phần lớn nhất) |
 
-Team B nằm trên **đường găng**: B-01 rồi B-02 phải xong ngày 18/11, vì phần trung tâm của Team D chờ nó.
+Hai người: **B1** (lead) giữ hiệu chỉnh và mở thủ công, viết phần báo cáo chính; **B2** giữ kiểm chứng hạ tầng, hàng đợi bất thường, chỉ số.
 
 ## 2. Bản đồ mã của attendance
 
@@ -21,151 +44,131 @@ Gói gốc: `services/attendance/src/main/java/vn/tmc/attendance/`.
 | Gói | Lớp chính | Việc |
 | --- | --- | --- |
 | `domain` | **`AccessAttempt`**, `AttemptStatus` | Thực thể lượt quét và các chuyển trạng thái hợp lệ |
-| | `AttendanceTransaction` | Bản ghi công, mỗi lượt quét tối đa một bản |
-| | `Anomaly`, `AttemptSource` | Cờ bất thường; nguồn `ONLINE`, `OFFLINE`, `MANUAL` |
-| `application.usecase` | `AttendanceCommandService` | Ghi lượt quét, đánh dấu đã ra lệnh, ghi kết quả cổng |
-| | `GateResultApplier` | Nơi duy nhất biến kết quả cổng thành trạng thái, bản ghi công và sự kiện |
-| | `IngestOfflineBatchUseCase` | Nhập journal của kiosk, phát hiện token dùng lại và anti-passback |
-| | `RecoverStaleAttemptsUseCase` | Nhả giữ chỗ quá hạn; chuyển lượt treo sang `GATE_UNKNOWN` |
-| | `ReconcileUnknownUseCase` | Hỏi gate-station rồi chốt lượt `GATE_UNKNOWN` |
-| | `PublishOutboxUseCase` | Đẩy outbox lên broker, chỉ đánh dấu khi broker xác nhận |
-| | `AttendanceEventFactory` | Dựng sự kiện, không chứa dữ liệu cá nhân |
-| `application.port.out` | `IAttemptRepository`, `IAttendanceTransactionRepository`, `IOutboxRepository`, `ITransactionRunner`, `IGateStatusQuery` | Mọi thứ use case cần ở bên ngoài |
+| | `AttendanceTransaction`, `AttendanceCorrection` | Bản ghi công; bản hiệu chỉnh liên kết bản gốc |
+| | `Anomaly` (`TOKEN_REUSED_OFFLINE`, `ANTI_PASSBACK_OFFLINE`), `AttemptSource` | Cờ bất thường; nguồn `ONLINE`, `OFFLINE`, `MANUAL` |
+| `application.usecase` | `AttendanceCommandService`, `GateResultApplier` | Ghi lượt quét; biến kết quả cổng thành trạng thái, bản ghi công, sự kiện |
+| | `IngestOfflineBatchUseCase`, `RecoverStaleAttemptsUseCase`, `ReconcileUnknownUseCase` | Nhập lô offline; phục hồi; đối soát `GATE_UNKNOWN` |
+| | `PublishOutboxUseCase`, `AttendanceEventFactory` | Đẩy outbox lên broker; dựng sự kiện không chứa dữ liệu cá nhân |
+| `application.port.out` | `IAttemptRepository`, `IAttendanceTransactionRepository`, `IAttendanceCorrectionRepository`, `IOutboxRepository`, `ITransactionRunner`, `IGateStatusQuery` | Mọi thứ use case cần ở bên ngoài |
 | `adapter.in.rest` | `InternalAttendanceController` | API nội bộ cho gate-station |
-| `adapter.in.scheduler` | `MaintenanceScheduler` | Chạy outbox (1 giây), phục hồi (5 giây), đối soát (10 giây) |
-| `adapter.out.inmem` | `InMemoryAttemptRepository`, `InMemoryOutboxRepository`, `InMemoryStore`, ... | Bản dùng cho test và profile `local` |
-| `adapter.out.persistence` | `JdbcAttemptRepository`, `JdbcAttendanceTransactionRepository`, `JdbcOutboxRepository`, `SpringTransactionRunner` | Bản PostgreSQL, **chưa kiểm chứng** |
-| `adapter.out.messaging` | `AmqpEventPublisher` | Bản RabbitMQ, **chưa kiểm chứng** |
-| `adapter.out.http` | `HttpGateStatusQuery` | Hỏi gate-station khi đối soát |
-| `bootstrap` | `UseCaseConfig`, `InMemoryProfileConfig`, `InfrastructureProfileConfig` | Chọn adapter theo profile |
-
-Lược đồ cơ sở dữ liệu: `src/main/resources/db/migration/V1__attendance_schema.sql`.
-
-## 3. Chạy và kiểm thử phần của team
-
-```bash
-./gradlew :services:attendance:test
-./gradlew :services:attendance:test --tests '*Adr11ResilienceTest'
-./gradlew :services:attendance:integrationTest      # cần Docker
-```
+| `adapter.in.scheduler` | `MaintenanceScheduler` | Outbox 1 giây, phục hồi 5 giây, đối soát 10 giây |
+| `adapter.out.inmem` | `InMemoryStore`, `InMemoryAttemptRepository`, ... | Test và profile `local`, `inmem` |
+| `adapter.out.persistence` | `JdbcAttemptRepository`, `JdbcAttendanceTransactionRepository`, `JdbcAttendanceCorrectionRepository`, `JdbcOutboxRepository`, `SpringTransactionRunner` | PostgreSQL, có `PersistenceAndBrokerIT` |
+| `bootstrap` | `UseCaseConfig`, `InMemoryProfileConfig`, `InfrastructureProfileConfig` | Chọn adapter theo profile; publisher RabbitMQ |
 
 | Lớp test | Kiểm gì |
 | --- | --- |
 | `AccessAttemptTest` | Chuyển trạng thái hợp lệ và không hợp lệ |
-| `Adr11ResilienceTest` | Sáu test bắt buộc của ADR-11: gửi trùng, hết giờ chờ, máy chủ chết, broker chết, lô offline, giữ chỗ quá hạn |
+| `Adr11ResilienceTest` | Sáu test bắt buộc của ADR-11 |
 | `ManualOpenTest` | Mở thủ công không tự tính công |
+| `AttendanceCorrectedEventTest` | Sự kiện hiệu chỉnh đúng hợp đồng |
 | `InternalApiFlowTest` | API nội bộ qua MockMvc với profile `inmem` |
-| `PersistenceAndBrokerIT` | Các repository JDBC với PostgreSQL thật (thẻ `integration`) |
+| `PersistenceAndBrokerIT` | Repository JDBC với PostgreSQL thật (thẻ `integration`) |
 | `ArchitectureTest` | Chiều phụ thuộc giữa các gói |
 
-`AttendanceFixture` (trong `src/test/.../support`) dựng cả ứng dụng trên adapter trong bộ nhớ, kèm `MutableClock` để tua thời gian.
+## 3. Việc phải làm (16/11 đến 24/11)
 
-Chạy riêng attendance: `SPRING_PROFILES_ACTIVE=inmem ./gradlew :services:attendance:bootRun`. Ở profile này bộ đối soát dùng bản giả, luôn trả "chưa xác định".
+**Mọi hạn là 23:00 của ngày cuối**, tính theo lúc PR hợp nhất vào `main`. Mức: **B** bắt buộc, **N** nên có.
 
-Thử tay API:
+| Story | Mức | Người | Bắt đầu | Hạn |
+| --- | --- | --- | --- | --- |
+| B-06 Hiệu chỉnh chấm công: use case và endpoint | B | B1 | 16/11 | 18/11 |
+| B-07 Xác minh lượt mở thủ công | N | B1 | 19/11 | 20/11 sáng |
+| R-B Phần báo cáo "mất kết nối" | B | B1 (B2 bổ sung bằng chứng 23/11) | 20/11 chiều (nháp) | 24/11 (bản cuối) |
+| B-01 (phần còn lại) Test rollback | B | B2 | 16/11 sáng | 16/11 |
+| B-02 (phần còn lại) Dừng và bật lại RabbitMQ | B | B2 | 16/11 chiều | 17/11 |
+| B-03 Hàng đợi bất thường cho HR | B | B2 | 18/11 | 19/11 |
+| B-08 Chỉ số vận hành | N | B2 | 20/11 | 20/11 |
 
-```bash
-curl -s http://localhost:8082/internal/v1/attempts/<attempt_id>
-```
+Ngày 23/11: B1 hoàn thiện báo cáo; B2 chạy 3 demo với attendance ở profile mặc định trên PostgreSQL (thuộc kiểm tích hợp I-6) và bổ sung bằng chứng vào báo cáo. Ngày 24/11: đóng băng mã lúc 23:00, chỉ sửa lỗi; tổng duyệt demo.
 
-## 4. Việc phải làm
+Team B có tải code nhẹ hơn các team khác vì phần báo cáo "Issues Encountered: mất kết nối" là phần dài nhất.
 
-**Mọi hạn là 23:00 của ngày được ghi**, tính theo thời điểm PR hợp nhất vào `main`. Khi một story ghi khoảng ngày (ví dụ "16 đến 17/11"), hạn là 23:00 của ngày cuối. Toàn cảnh lịch: [03-gantt.md](03-gantt.md).
+### B-06. Hiệu chỉnh chấm công: use case và endpoint (B, L, B1, 16 đến 18/11)
 
-### B-05. Chiều của lượt công gần nhất (bắt buộc, S, 12 đến 13/11, B1). **Team A đang chờ.**
+| | |
+| --- | --- |
+| Mục tiêu | HR sửa một bản ghi công sai một cách có kiểm soát (FR-26) |
+| Sửa ở | Port vào mới (ví dụ `IAttendanceCorrection`) và use case trong `application/usecase/` dùng `AttendanceCorrection`, `IAttendanceCorrectionRepository`, `AttendanceEventFactory.attendanceCorrected`; endpoint cho HR trong `adapter/in/rest/`; bean `PrincipalResolver` (theo mẫu `UserQrConfig.principalResolver`) để kiểm vai `HR_STAFF`; mô tả endpoint trong `internal-attendance.openapi.yaml` cùng PR |
+| Code theo | `attendance-events.asyncapi.yaml` (`CorrectionPayload`: `reason` là mã UPPER_SNAKE_CASE, `aggregateVersion` = phiên bản gốc + `revision`); `TestTokens.withRoles(...)` cho test quyền |
+| Xong khi | Test use case: hiệu chỉnh tạo bản ghi mới liên kết bản gốc (không sửa đè), ghi dòng outbox `AttendanceCorrected` và `AuditRecorded` (người sửa, mã lý do) **trong cùng transaction**; gọi lại cùng khóa lũy đẳng không tạo bản thứ hai; vai khác `HR_STAFF` nhận 403. Test IT trong `PersistenceAndBrokerIT`: use case ném lỗi giữa chừng thì không còn bản hiệu chỉnh lẫn dòng outbox |
 
-Gate-station cần hỏi "lượt công gần nhất của nhân viên này là vào hay ra" để dựng lại anti-passback khi Redis mất dữ liệu (A-03).
+### B-07. Xác minh lượt mở thủ công (N, M, B1, 19 đến 20/11 sáng)
 
-- **Sửa ở:** thêm `lastDirection(UUID employeeUuid)` vào `IAttendanceQuery` và `AttendanceQueryService` (đã có sẵn `IAttendanceTransactionRepository.lastDirectionBefore`); thêm `GET /internal/v1/employees/{uuid}/last-direction` vào `InternalAttendanceController`; mô tả trong `internal-attendance.openapi.yaml`.
-- **Xong khi:** test trả đúng chiều và thời điểm của bản ghi công mới nhất; nhân viên chưa có bản ghi thì trả 404 hoặc thân rỗng (chốt một cách và ghi vào OpenAPI).
-- **Hạn hợp nhất: 23:00 ngày 13/11.**
+| | |
+| --- | --- |
+| Mục tiêu | Lượt `MANUAL` được HR xác minh thì thành công hợp lệ (FR-20, UC-06 bước cuối) |
+| Sửa ở | Use case mới, endpoint HR; phát `AttendanceConfirmed` cho lượt đã xác minh |
+| Code theo | `AttendanceConfirmed` trong `attendance-events.asyncapi.yaml` (không đổi lược đồ); `ManualOpenTest` |
+| Xong khi | Test: lượt thủ công chưa xác minh không tính công (giữ test cũ xanh); sau khi `HR_STAFF` xác minh thì có bản ghi công và dòng outbox `AttendanceConfirmed`; xác minh hai lần không tạo hai bản |
 
-### B-04. Thêm `direction` và `employeeUuid` vào `AttemptView` (nên có, S, 12 đến 13/11, B2)
+### B-01 (phần còn lại). Test rollback (B, S, B2, 16/11 sáng)
 
-- **Sửa ở:** `application/port/in/AttemptView.java` và OpenAPI.
-- **Xong khi:** `GET /internal/v1/attempts/{id}` trả thêm hai trường; thay đổi là thêm trường nên không phá client cũ.
+| | |
+| --- | --- |
+| Mục tiêu | Chứng minh tính nguyên tử trên PostgreSQL thật, điều bản bộ nhớ không chứng minh được |
+| Sửa ở | `PersistenceAndBrokerIT` |
+| Code theo | `SpringTransactionRunner`, `TmcContainers` |
+| Xong khi | Test mới: một use case ném lỗi sau khi ghi lượt quét thì cả lượt quét lẫn dòng outbox đều không được lưu. `./gradlew :services:attendance:integrationTest` xanh |
 
-### Lược đồ `AttendanceCorrected` (13/11, B1). **Team D đang chờ.**
+### B-02 (phần còn lại). Dừng và bật lại RabbitMQ (B, M, B2, 16/11 chiều đến 17/11)
 
-Thêm lược đồ sự kiện vào `attendance-events.asyncapi.yaml` trước khi hiện thực B-06, để Team D viết D-04 song song. Tối thiểu: `eventId` của bản ghi gốc, `employeeUuid`, `direction`, `scannedAt` mới, lý do hiệu chỉnh, `aggregateVersion` tăng.
+| | |
+| --- | --- |
+| Mục tiêu | ADR-11 điểm P7 trên hạ tầng thật: broker chết giữa lúc phát thì không mất, không trùng |
+| Sửa ở | Test IT mới (thẻ `integration`) với RabbitMQ của `TmcContainers` và `PublishOutboxUseCase` |
+| Code theo | `MessagingInfraIT.should_report_not_published_when_the_broker_is_unreachable` (đã có ở mức thư viện); exchange `tmc.events`, khóa `attendance.<EventType>` |
+| Xong khi | Test: dừng broker thì `PublishOutboxUseCase.run()` không đánh dấu `PUBLISHED`, dòng còn `PENDING`; bật lại thì mọi sự kiện tới hàng đợi đúng thứ tự ghi; dòng đã `PUBLISHED` không bị phát lại |
 
-### B-01. Kiểm chứng tầng JDBC (bắt buộc, M, 16 đến 17/11, B1)
+### B-03. Hàng đợi bất thường cho HR (B, M, B2, 18 đến 19/11)
 
-Bốn lớp trong `adapter/out/persistence` đã viết nhưng chưa từng chạy với PostgreSQL.
+| | |
+| --- | --- |
+| Mục tiêu | HR liệt kê được lượt có cờ `TOKEN_REUSED_OFFLINE`, `ANTI_PASSBACK_OFFLINE` chưa xử lý (UC-09) |
+| Sửa ở | Truy vấn `anomalies(...)` trong `IAttendanceQuery`, `IAttemptRepository` và cả hai adapter; endpoint HR; mô tả trong OpenAPI cùng PR |
+| Code theo | `Anomaly`; `IngestOfflineBatchUseCase` (nơi gắn cờ); `PrincipalResolver` đã nối ở B-06 |
+| Xong khi | Test use case và IT JDBC: lọc theo nhà máy và khoảng thời gian; vai khác `HR_STAFF` nhận 403 |
 
-- **Việc:** chạy `./gradlew :services:attendance:integrationTest`, sửa cho tới khi `PersistenceAndBrokerIT` xanh. Sau đó chạy service với profile mặc định và chạy 3 demo.
-- **Bổ sung test cho:** `existsOtherWithJti`, `findByStatusUpdatedBefore`, `lastDirectionBefore`, và **rollback**: một use case ném lỗi giữa chừng thì cả lượt quét lẫn dòng outbox đều không được lưu.
-- **Xong khi:** test tích hợp xanh; 3 demo qua với PostgreSQL thật.
-- **Điểm dễ sai:** kiểu `TIMESTAMPTZ` với `Instant`; cột `JSONB` của outbox; `EventEnvelope` đọc lại từ JSON phải bằng bản gốc.
+### B-08. Chỉ số vận hành (N, S, B2, 20/11)
 
-### B-02. Outbox với RabbitMQ thật (bắt buộc, M, 16 đến 18/11, B2). **Team D và C đang chờ.**
+Số dòng outbox tồn quá 5 phút và số lượt `GATE_UNKNOWN` qua Micrometer ở `/actuator` (AC-11). **Xong khi:** test đọc được hai chỉ số từ `MeterRegistry` sau khi tạo dữ liệu tương ứng. Cắt nếu trễ.
 
-- **Việc:** kiểm chứng `AmqpEventPublisher`: phát kèm xác nhận của broker, tên exchange `tmc.attendance.events`, khóa định tuyến `attendance.<eventType>`.
-- **Sửa ở:** thêm test tích hợp dùng Testcontainers RabbitMQ.
-- **Xong khi** có test chứng minh:
-  1. Sự kiện tới đúng hàng đợi, đúng thứ tự ghi.
-  2. Dừng broker: `PublishOutboxUseCase.run()` không đánh dấu `PUBLISHED`, dòng outbox còn `PENDING`.
-  3. Bật lại broker: mọi sự kiện được phát, không mất.
-  4. Dòng đã `PUBLISHED` không bị phát lại ở lần chạy sau.
-- **Bắt đầu sớm:** B2 có thể làm với Testcontainers RabbitMQ từ 16/11 mà không cần chờ B-01, bằng cách dùng `InMemoryOutboxRepository` cho phần outbox.
-- **Hạn: 18/11, mục tiêu xong trong ngày 17/11** để còn thời gian cho B-10. Báo tình trạng mỗi sáng.
+### R-B. Phần báo cáo "mất kết nối" (B1; nháp 20/11, bản cuối 24/11)
 
-### B-10. `JdbcProcessedMessageStore` (nên có, M, 18/11, B2). **Team D đang chờ.**
-
-Bên nghe sự kiện cần ghi nhớ thông điệp đã xử lý vào cơ sở dữ liệu để không xử lý trùng sau khi khởi động lại. Team B đã quen JDBC và Testcontainers sau B-01 nên nhận việc này thay Team D. B2 làm ngay sau khi xong B-02; nếu B-02 kéo tới hết ngày 18/11 thì B-10 lùi sang sáng 19/11 và báo Team D (Team D có phương án thay thế, xem H9).
-
-- **Sửa ở:** `platform/messaging`: lớp `JdbcProcessedMessageStore` hiện thực `ProcessedMessageStore`, kèm câu lệnh tạo bảng `processed_messages (consumer, message_id, processed_at)` với khóa chính `(consumer, message_id)`.
-- **Xong khi:** test chèn cùng `message_id` hai lần thì lần hai báo "đã xử lý"; hai consumer khác tên không chặn nhau.
-- **Lưu ý:** `platform/*` là mã dùng chung, PR cần cả bốn lead duyệt. Giữ lớp này không phụ thuộc Spring Boot, chỉ cần `JdbcTemplate`.
-
-### B-03. Hàng đợi bất thường cho HR (bắt buộc, M, 19 đến 20/11, B2)
-
-Lượt quét offline có cờ `TOKEN_REUSED_OFFLINE` hoặc `ANTI_PASSBACK_OFFLINE` hiện được lưu nhưng không ai liệt kê được.
-
-- **Sửa ở:** thêm truy vấn `anomalies(...)` vào `IAttendanceQuery` và `IAttemptRepository` (cả hai adapter), thêm endpoint và mô tả OpenAPI.
-- **Xong khi:** HR (vai trò `HR_STAFF`) liệt kê được các lượt có cờ bất thường chưa xử lý, lọc theo nhà máy và khoảng thời gian; vai trò khác nhận 403.
-
-### B-06. Hiệu chỉnh chấm công (bắt buộc, L, 18 đến 20/11, B1). **Team D đang chờ.**
-
-HR sửa một bản ghi công sai một cách có kiểm soát (FR-26).
-
-- **Sửa ở:** use case mới trong `application/usecase`, port vào mới, endpoint cho HR, sự kiện `attendanceCorrected` trong `AttendanceEventFactory`.
-- **Xong khi:** hiệu chỉnh tạo bản ghi mới liên kết với bản gốc (không sửa đè), phát `AttendanceCorrected` với `aggregateVersion` tăng, ghi `AuditRecorded` có người sửa và lý do; chỉ `HR_STAFF` được làm; hiệu chỉnh hai lần cùng khóa lũy đẳng không tạo hai bản.
-- **Thứ tự:** lược đồ sự kiện đã chốt từ 13/11. Hợp nhất trước 23:00 ngày 20/11.
-
-### B-08. Chỉ số vận hành (nên có, S, 23/11, B2)
-
-Số dòng outbox tồn quá 5 phút và số lượt `GATE_UNKNOWN`, xuất qua Micrometer ở `/actuator`. Cắt nếu trễ.
-
-## 5. Team B cần gì và nợ gì
-
-| Chiều | Hạn (23:00) | Nội dung |
-| --- | --- | --- |
-| Giao cho A | 13/11 | B-05, B-04 |
-| Giao cho D | 13/11 | Lược đồ `AttendanceCorrected` |
-| Giao cho D, C | 18/11 | B-02: outbox phát lên RabbitMQ thật |
-| Giao cho D | 18/11 | B-10: `JdbcProcessedMessageStore` |
-| Giao cho D | 20/11 | B-06: sự kiện `AttendanceCorrected` thật; bản nháp báo cáo |
-| Nhận từ A | luôn luôn | `GET /internal/v1/attempts/{id}/gate-observation` để đối soát |
-| Nhận từ D | 12/11, 16/11 | Compose chạy được; CI |
-
-**Đổi API nội bộ hoặc lược đồ sự kiện thì phải báo trước.** Gate-station gọi mọi endpoint của `InternalAttendanceController`; ba consumer của Team D đọc mọi sự kiện. Thêm trường thì được; đổi tên hoặc bỏ trường cần ADR.
-
-## 6. Bẫy cần tránh
-
-- **Mọi thay đổi trạng thái và dòng outbox của nó phải cùng một transaction.** Dùng `tx.inTransaction(...)`. Ghi outbox bên ngoài transaction là mất bảo đảm của ADR-04.
-- **Use case không tự đặt trạng thái.** Chỉ gọi các phương thức của `AccessAttempt` (`reserve`, `commandGate`, `gateOpened`, ...); thực thể tự kiểm chuyển trạng thái hợp lệ.
-- **Mọi lệnh ghi đều lũy đẳng theo `attemptId`.** Gọi lại thì trả kết quả đã lưu với `duplicate = true`, không tạo gì mới.
-- **Sự kiện không được chứa `jti`, token, hay tên người.** Có test kiểm điều này; đừng tắt nó.
-- **Dòng outbox chỉ thành `PUBLISHED` sau khi broker xác nhận.** Hết giờ chờ xác nhận nghĩa là chưa phát.
-- **Bản bộ nhớ không có rollback.** Test trên `InMemoryStore` không chứng minh được tính nguyên tử; điều đó phải chứng minh bằng test tích hợp (B-01).
-
-## 7. Phần báo cáo của Team B
-
-Team B viết phần lớn nhất. Nộp bản nháp ngày 20/11 vào `docs/report/`:
-
-- **Issues Encountered: mất kết nối.** Vấn đề, 7 điểm đứt, cơ chế (ghi trước làm sau, khóa lũy đẳng, không gửi lại lệnh mở, đối soát, outbox), đánh đổi, và bằng chứng: tên test trong `Adr11ResilienceTest` cho từng điểm đứt, cùng `demo-offline` và `demo-timeout`.
+- **Issues Encountered: mất kết nối.** Vấn đề, 7 điểm đứt, cơ chế (ghi trước làm sau, khóa lũy đẳng, không gửi lại lệnh mở, đối soát, outbox), đánh đổi; bằng chứng là tên test trong `Adr11ResilienceTest`, `PersistenceAndBrokerIT`, test B-02, cùng `demo-offline` và `demo-timeout`.
 - Cập nhật NFR-09 và UC-08 theo `docs/adr/README.md` mục 3.
-- Sơ đồ máy trạng thái và sơ đồ outbox, khớp với mã.
-- Áp dụng SOLID trên mã của team, ví dụ: `GateResultApplier` (một lý do để thay đổi), các port `IAttendanceCommand`, `IAttendanceQuery`, `IOfflineAttendanceIngest` tách riêng (interface nhỏ), `ITransactionRunner` và `EventPublisher` (phụ thuộc vào trừu tượng).
-- Một đoạn phản ánh.
+- Sơ đồ máy trạng thái và sơ đồ outbox, khớp với mã (exchange `tmc.events`, ADR-15).
+- SOLID: `GateResultApplier` (một lý do để thay đổi), các port `IAttendanceCommand`, `IAttendanceQuery`, `IOfflineAttendanceIngest` tách riêng, `ITransactionRunner` và `EventPublisher` (phụ thuộc vào trừu tượng). Một đoạn phản ánh.
+
+## 4. Đã xong, không cần làm lại
+
+| Story | Ở đâu |
+| --- | --- |
+| B-04 `direction`, `employeeUuid` trong `AttemptView` | `AttemptView`, `internal-attendance.openapi.yaml` |
+| B-05 last-direction | `InternalAttendanceController`, `HttpAttendanceGatewayTest` phía gate-station |
+| B-10 `JdbcProcessedMessageStore` | `platform/messaging/.../jdbc/JdbcProcessedMessageStore.java`, `MessagingInfraIT` |
+| Lược đồ và nền lưu trữ của `AttendanceCorrected` | Xem hộp đầu tài liệu |
+| B-01, B-02 (phần lớn) | `PersistenceAndBrokerIT` 8 test, `MessagingInfraIT` |
+
+## 5. Kiểm tích hợp tùy chọn
+
+| Mã | Ngày | Cùng team | Kiểm gì |
+| --- | --- | --- | --- |
+| I-1 | 19/11 | A | Gate-station gọi last-direction thật khi Redis mất dữ liệu (A-03) |
+| I-3 | 19/11 | D | Hiệu chỉnh qua RabbitMQ: reporting áp bản hiệu chỉnh, hr-integration ghi nhận |
+| I-6 | 23/11 | cả nhóm | 3 demo trên stack Docker đầy đủ, attendance ở profile mặc định |
+
+Không story nào ở trên chờ những mục này.
+
+## 6. Hợp đồng Team B giữ ổn định
+
+Gate-station gọi mọi endpoint của `InternalAttendanceController`; ba consumer của Team D đọc mọi sự kiện `attendance.*`. Thêm trường hoặc endpoint thì được (sửa OpenAPI, AsyncAPI cùng PR, mời bên dùng duyệt); đổi tên hoặc bỏ trường cần ADR.
+
+## 7. Bẫy cần tránh
+
+- **Mọi thay đổi trạng thái và dòng outbox của nó phải cùng một transaction** (`tx.inTransaction(...)`, ADR-04).
+- **Use case không tự đặt trạng thái.** Chỉ gọi phương thức của `AccessAttempt`.
+- **Mọi lệnh ghi đều lũy đẳng** theo `attemptId` (hoặc khóa hiệu chỉnh).
+- **Sự kiện không chứa `jti`, token, hay tên người.** Có test kiểm điều này.
+- **Dòng outbox chỉ thành `PUBLISHED` sau khi broker xác nhận.**
+- **Hiệu chỉnh không sửa đè bản gốc.** Consumer áp bản có `aggregateVersion` lớn nhất.
