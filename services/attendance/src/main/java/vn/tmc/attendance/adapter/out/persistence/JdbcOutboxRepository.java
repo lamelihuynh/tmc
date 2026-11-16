@@ -13,7 +13,7 @@ import vn.tmc.platform.kernel.EventEnvelope;
  * gives the publish order. Rows are inserted through the same JdbcTemplate, and therefore the same
  * transaction, as the attempt they describe.
  *
- * <p>NOT yet run against a real database. TODO Team B (B-01).
+ * <p>Verified against PostgreSQL by PersistenceAndBrokerIT.
  */
 public class JdbcOutboxRepository implements IOutboxRepository {
   private final JdbcTemplate jdbc;

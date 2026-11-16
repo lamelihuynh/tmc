@@ -19,8 +19,7 @@ import vn.tmc.platform.kernel.ReasonCode;
  * PostgreSQL storage of access_attempts (V1__attendance_schema.sql). Save is an upsert on the
  * primary key attempt_id.
  *
- * <p>NOT yet run against a real database. TODO Team B (B-01): run PersistenceAndBrokerIT with
- * Docker.
+ * <p>Verified against PostgreSQL by PersistenceAndBrokerIT.
  */
 public class JdbcAttemptRepository implements IAttemptRepository {
   private static final String COLUMNS =

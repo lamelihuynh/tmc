@@ -20,7 +20,7 @@ import vn.tmc.userqr.domain.DeviceStatus;
  * employee" is also enforced by the partial unique index, so two parallel registrations cannot both
  * win.
  *
- * <p>NOT yet run against a real database. TODO Team C (C-01): integration test with Testcontainers.
+ * <p>Verified against PostgreSQL by UserQrPersistenceIT.
  */
 public class JdbcDeviceKeyRegistry implements IDeviceKeyRegistry {
   private static final String COLUMNS =

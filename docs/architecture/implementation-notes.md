@@ -4,6 +4,9 @@ Tài liệu này trả lời câu hỏi "mã đang làm gì khác với ADR và 
 
 ## 1. Khác biệt có chủ đích so với ADR
 
+**Đã quyết định (16/11/2026):** điểm 1 đến 6 theo hướng **ADR khớp mã**; ADR-11, 12, 13 chuyển sang Accepted, mỗi ADR có mục
+"Ghi chú khi chấp thuận" ghi lại điều chỉnh. Điểm 7 giữ nguyên (khớp M1). Báo cáo cuối chỉ cần mô tả theo cột "Mã làm".
+
 | # | ADR nói | Mã làm | Lý do | Cần làm với báo cáo |
 | --- | --- | --- | --- | --- |
 | 1 | ADR-11: `PUBLISHED` là trạng thái của lượt quét | `PUBLISHED` là `publish_status` của hàng outbox, **không** phải `AttemptStatus` | Publisher chạy nền không nên ghi vào aggregate; M1 mục 12.7 cũng tách `PENDING_GATE` khỏi `PENDING`/`PUBLISHED` của outbox | Sửa sơ đồ trạng thái ADR-11 cho khớp (`state-machine.md` đã vẽ đúng theo mã) |
@@ -26,6 +29,13 @@ Tài liệu này trả lời câu hỏi "mã đang làm gì khác với ADR và 
 | Khi cổng mở nhưng không ghi được kết quả | Trả `UNCONFIRMED`; hàng ở `GATE_COMMANDED` sẽ được phục hồi sang `GATE_UNKNOWN` rồi đối soát | `RecordScanUseCase.onOpened` |
 | Kiosk hỏi lại | Khi Edge trả `IN_PROGRESS`, kiosk hỏi lại cùng `attempt_id` tối đa 6 lần, mỗi lần chờ 300 ms, rồi mới kết luận `PENDING`. **Không** mở cổng cục bộ khi Edge đang giữ lượt | `KioskApp.scan` |
 | Thứ tự xác thực QR | Cấu trúc và PII, thiết bị, trạng thái thiết bị, chủ khóa phải là chủ token, chữ ký, rồi mới đến thời gian | `VerifyQrTokenUseCase` |
+| JWT của nhân sự (ADR-08) | identity ký ES256, sống 15 phút, JWKS ở `/.well-known/jwks.json`; service kiểm tra bằng `JwtPrincipalVerifier`. Header dev chỉ được tin ở profile `local`, `inmem` và khi không có `Authorization`; Bearer sai không bao giờ rơi về header | `platform/security/jwt/*`, `PrincipalResolver`, identity `LoginUseCase`, user-qr `UserQrConfig` |
+| Một exchange cho mọi sự kiện | `tmc.events`, khóa `<nguồn>.<EventType>`, mỗi consumer một hàng đợi + DLQ, thử lại 3 lần (ADR-15) | `platform/messaging/TmcExchange`, các `*QueueConfig` |
+| Outbox và khử trùng dùng chung | `OutboxStore`/`OutboxRelay`/`AmqpEnvelopePublisher`; `JdbcProcessedMessageStore` chạy chung transaction với handler (ADR-15) | `platform/messaging`, `DedupStoreConfig` ở 3 consumer |
+| Database riêng của Gate Station | `gate_store` trên PostgreSQL Edge, chỉ bật với profile `gate-store` (ADR-14) | `GateStoreConfig`, `db/gate-store` |
+| Danh bạ nhân viên tại Edge | Nạp từ seed, làm mới từ gói đồng bộ của User/QR mỗi 30 giây; lỗi thì giữ bản cuối | `SyncEmployeeDirectoryUseCase`, `EmployeeDirectorySyncJob` |
+| Hiệu chỉnh công (B-06) | Bản hiệu chỉnh là hàng mới trong `attendance_corrections`, không sửa hàng gốc; `aggregateVersion` = phiên bản gốc + `revision` | `AttendanceCorrection`, `AttendanceEventFactory.attendanceCorrected` |
+| Một nguồn cho dữ liệu dùng chung trong test | `docs/api/fixtures/employee-seed.json`, `qr-token-policy.json`; mỗi bên có test đọc tệp này | `EmployeeSeedContractTest` (3 service), `QrTokenPolicyContractTest` (user-qr, kiosk-simulator), `token.test.ts` |
 
 ## 3. Khoảng trống: anti-passback sau khi nhập offline  (Team A: A-02, Team B: B-03)
 
@@ -36,28 +46,39 @@ Hướng giải quyết đề xuất: sau khi `ingestOffline` trả `ACCEPTED`, 
 ## 4. Khoảng trống: trạng thái lạnh và danh bạ nhân viên  (Team A: A-03, Team C: C-02)
 
 - **Redis mất dữ liệu** thì `last` của anti-passback biến mất, nhân viên đã vào có thể vào lần nữa. Cần dựng lại từ `IAttendanceQuery.lastDirection` (B-05, A-03). Compose đã bật AOF để giảm khả năng này, không loại bỏ nó.
-- **`IEmployeeDirectory`** đọc từ cấu hình (`application.yml`). Thực tế phải đến từ gói đồng bộ của User/QR (C-02). Trong lúc đó, `ActiveEmployeeRule` chỉ đúng với dữ liệu seed.
-- Cache nhân viên đủ quyền **không có ở kiosk**: kiểm tra offline chỉ dựa vào khóa thiết bị, chữ ký, thời gian và replay. Nhân viên đã nghỉ việc nhưng thiết bị chưa bị thu hồi vẫn qua được khi kiosk offline, đến lúc đồng bộ sẽ bị gắn bất thường. M1 mục 10.4 đã thừa nhận giới hạn "không cam kết thu hồi tức thời trên thiết bị mất mạng"; phải nêu rõ trong báo cáo.
+- **`IEmployeeDirectory`** của Gate Station nay được làm mới từ gói đồng bộ của User/QR. Nhưng User/QR vẫn lấy danh sách từ cấu hình (`tmc.qr.employees`); nguồn HR thật là C-02. Thay đổi trạng thái nhân viên đến cổng trễ tối đa một chu kỳ (30 giây).
+- Gói đồng bộ của kiosk **đã mang** danh bạ đủ điều kiện, nhưng kiosk-simulator **chưa dùng** nó khi offline: kiểm tra offline chỉ dựa vào khóa thiết bị, chữ ký, thời gian và replay. Nhân viên đã nghỉ việc nhưng thiết bị chưa bị thu hồi vẫn qua được khi kiosk offline, đến lúc đồng bộ sẽ bị gắn bất thường. M1 mục 10.4 đã thừa nhận giới hạn "không cam kết thu hồi tức thời trên thiết bị mất mạng"; phải nêu rõ trong báo cáo.
 
 ## 5. Khoảng trống nhỏ  (Team A: A-06, Team B: B-04)
 
-- Khi trả lời một lượt **gửi lại**, `ScanResult.direction` là `null` vì `AttemptView` chưa mang chiều. Kiosk vẫn đúng nhưng không hiển thị chiều. Sửa bằng B-04 và A-06.
+- Khi trả lời một lượt **gửi lại**, `ScanResult.direction` là `null`. `AttemptView` **đã mang** `employeeUuid` và `direction` (commit `cdb7efb`), `IAttendanceGateway.lastDirection` đã có; việc còn lại là dùng chúng trong `RecordScanUseCase` (A-06, A-03).
 - `ReasonCode.GATE_DIRECTION_MISMATCH` chưa có rule nào dùng; chỉ dùng trong test mở rộng chính sách.
 
-## 6. Những gì chưa được kiểm chứng
+## 6. Đã và chưa được kiểm chứng
 
-| Hạng mục | Vì sao | Cách kiểm chứng | Story |
-| --- | --- | --- | --- |
-| Adapter JDBC, Flyway, Outbox trên PostgreSQL | Máy tạo scaffold không chạy được Docker | `make up && make integration` | D-01, B-01, C-01 |
-| `AmqpEventPublisher` và các `@RabbitListener` | Cần RabbitMQ | Test tích hợp AMQP | B-02, D-03 |
-| `RedisTokenReservation`, `RedisAntiPassbackStore` | Cần Redis | Test tích hợp | A-01 |
-| Mọi kiểm thử hiệu năng (NFR-06) | Chưa có thiết lập đo | Kiểm thử tải | A-09 |
-| mTLS, TLS 1.2+ | Chưa cấu hình | Tài liệu và cấu hình triển khai | D-11 |
+Cập nhật 16/11/2026 trên máy có Docker. Số test chính xác: `docs/handover/_decoupling-changelog.md` mục 3.
 
-**Đã kiểm chứng:** toàn bộ test đơn vị và kiến trúc (xem bảng ở `WORK-BREAKDOWN.md` mục 2) và 3 kịch bản demo chạy trên 4 tiến trình thật qua HTTP (profile `local`): đường thành công, từ chối replay, token giống QR tĩnh, token chứa tên, anti-passback, offline, và timeout cổng có phục hồi.
+| Hạng mục | Trạng thái | Bằng chứng |
+| --- | --- | --- |
+| Adapter JDBC và Flyway của attendance, outbox trên PostgreSQL | **Đã kiểm chứng** | `PersistenceAndBrokerIT` |
+| `JdbcDeviceKeyRegistry`, outbox V2 của user-qr | **Đã kiểm chứng** | `UserQrPersistenceIT` |
+| `RedisTokenReservation`, `RedisAntiPassbackStore` | **Đã kiểm chứng** | `RedisAdaptersIT` |
+| Migration `gate_store`, profile `gate-store` | **Đã kiểm chứng** | `GateStoreIT`; khởi động thật trên container edge |
+| Outbox → RabbitMQ → consumer idempotent, `JdbcProcessedMessageStore`, hoàn tác dấu khi lỗi | **Đã kiểm chứng** | `MessagingInfraIT` |
+| `@RabbitListener` của reporting, hr-integration (gồm DLQ), audit-admin | **Đã kiểm chứng** | `AttendanceEventListenerIT`, `HrAttendanceListenerIT`, `AuditEventListenerIT` |
+| JWT: cấp, JWKS, kiểm tra Bearer qua mạng | **Đã kiểm chứng** | `LoginApiTest`, `BearerTokenApiTest`; thử thật D-01 (`troubleshooting.md`) |
+| 7 service khởi động ở profile mặc định trên hạ tầng `make up` | **Đã kiểm chứng** (D-01) | `troubleshooting.md`, mục Kết quả D-01 |
+| Dừng và bật lại RabbitMQ khi đang phát (B-02) | **Chưa** | Cần test dừng container giữa chừng |
+| 3 kịch bản demo trên stack Docker đầy đủ | **Chưa** (chỉ chạy trên profile `local`) | Chạy demo với service ở profile mặc định |
+| Read model JDBC của reporting, nhật ký HR, kho audit | **Chưa có mã** (vẫn trong bộ nhớ) | D-04, D-06, D-08 |
+| Mọi kiểm thử hiệu năng (NFR-06) | **Chưa** | A-09 |
+| mTLS, TLS 1.2+ | **Chưa** cấu hình | D-11 |
+
+**Đã kiểm chứng từ trước:** toàn bộ test đơn vị và kiến trúc, và 3 kịch bản demo trên các tiến trình thật qua HTTP (profile `local`, nay 5 tiến trình có identity).
 
 ## 7. Điều báo cáo không được khẳng định
 
 - Không nói "hệ thống đạt p95 ≤ 1 giây" cho tới khi A-09 có số đo.
-- Không nói "không mất bản ghi" trên hạ tầng thật cho tới khi B-01 và B-02 xanh. Có thể nói: "mô hình và các test đơn vị cho thấy mỗi điểm đứt có quy tắc phục hồi".
+- Không nói "không mất bản ghi khi broker khởi động lại" cho tới khi B-02 có test dừng và bật lại RabbitMQ. Có thể nói: "outbox và phát với xác nhận đã chạy trên PostgreSQL và RabbitMQ thật; mỗi điểm đứt có quy tắc phục hồi được test đơn vị".
+- Không nói audit đăng nhập là bền vững: outbox của identity còn ở bộ nhớ (ADR-15).
 - Không nói "có MFA" cho tới khi C-05 có TOTP thật.

@@ -20,7 +20,7 @@ import vn.tmc.platform.kernel.IClock;
  *
  * Redis must run with AOF so USED keys survive a restart (docker/docker-compose.yml).
  *
- * <p>NOT yet run against a real Redis. TODO Team A (A-01): Testcontainers integration test.
+ * <p>Verified against Redis by RedisAdaptersIT.
  */
 public class RedisTokenReservation implements ITokenReservation {
   private static final String PREFIX = "tmc:qr:jti:";

@@ -14,7 +14,7 @@ import vn.tmc.attendance.domain.Direction;
  * PostgreSQL storage of attendance_transactions. The primary key attempt_id plus ON CONFLICT DO
  * NOTHING is what guarantees a replay cannot count twice (DP-02).
  *
- * <p>NOT yet run against a real database. TODO Team B (B-01).
+ * <p>Verified against PostgreSQL by PersistenceAndBrokerIT.
  */
 public class JdbcAttendanceTransactionRepository implements IAttendanceTransactionRepository {
   private final JdbcTemplate jdbc;
