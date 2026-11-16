@@ -6,8 +6,8 @@
 <title>Lịch bàn giao TMC</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
-/* Layout: a planning board. Milestone strip, then one lane per person across 10 working days,
-   then the list of what teams owe each other. Read left to right like a wall calendar. */
+/* Layout: a planning board. Milestone strip, then a shared milestone lane and one lane per person
+   across the working days 16/11 to 26/11, then the optional integration checks. Read left to right. */
 :root {
   --bg: #f2f4f6;
   --surface: #ffffff;
@@ -71,7 +71,7 @@ section { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--wait); display: inline-block; }
 
 .board-scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
-.board { display: grid; grid-template-columns: 92px repeat(20, minmax(38px, 1fr)); min-width: 900px; }
+.board { display: grid; grid-template-columns: 92px repeat(18, minmax(38px, 1fr)); min-width: 860px; }
 .board > div { min-width: 0; }
 .hd { font-size: 0.78rem; color: var(--muted); padding: 8px 4px 6px; text-align: center; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
 .hd b { display: block; color: var(--ink); font-size: 0.86rem; }
@@ -80,8 +80,12 @@ section { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .lane { padding: 6px 8px 6px 12px; font-size: 0.82rem; color: var(--muted); border-bottom: 1px solid var(--grid); display: flex; align-items: center; }
 .lane.first { border-top: 1px solid var(--line); }
 .lane b { color: var(--ink); margin-right: 4px; }
-.track { grid-column: 2 / -1; display: grid; grid-template-columns: repeat(20, minmax(38px, 1fr)); border-bottom: 1px solid var(--grid); padding: 5px 0;
-  background-image: linear-gradient(to right, var(--grid) 1px, transparent 1px); background-size: 10% 100%; }
+.track { grid-column: 2 / -1; display: grid; grid-template-columns: repeat(18, minmax(38px, 1fr)); border-bottom: 1px solid var(--grid); padding: 5px 0;
+  background-image: linear-gradient(to right, var(--grid) 1px, transparent 1px); background-size: calc(100% / 9) 100%; }
+.bar.opt { background: transparent; color: var(--muted); box-shadow: inset 0 0 0 1px var(--muted); border-style: dashed; }
+.mile { margin: 0 2px; display: flex; align-items: center; justify-content: flex-end; gap: 4px; font-size: 0.72rem; color: var(--mile); font-weight: 600; min-height: 30px; white-space: nowrap; overflow: hidden; }
+.mile::after { content: ""; width: 10px; height: 10px; background: var(--mile); transform: rotate(45deg); flex: none; }
+.sw.opt { border: 1px dashed var(--muted); }
 .track.first { border-top: 1px solid var(--line); }
 .bar { margin: 0 2px; border: 0; border-radius: 6px; padding: 5px 6px; font: 500 0.76rem/1.2 var(--font); text-align: left; cursor: pointer;
   background: var(--must); color: var(--must-ink); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-height: 30px; position: relative; }
@@ -118,11 +122,11 @@ tr:last-child td { border-bottom: 0; }
 <div class="wrap">
   <header style="display:flex;flex-direction:column;gap:8px">
     <h1>Lịch bàn giao TMC</h1>
-    <p class="lede">10 ngày làm việc, từ 12/11 đến 25/11/2026, cho 4 team. Mọi hạn là 23:00 của ngày được ghi. Bấm vào một story để xem nó cần gì, ai đang chờ nó, và phải làm gì nếu thứ nó chờ bị trễ. Chi tiết đầy đủ nằm trong <span class="id">docs/handover/</span> của repo.</p>
+    <p class="lede">16/11 đến 26/11/2026, bốn team chạy song song, mỗi team hai người. Không team nào chờ mã chưa xong của team khác: mọi story xong được bằng hợp đồng trong <span class="id">docs/api</span>, bản giả và fixture. Đóng băng mã 23:00 ngày 24/11, nộp 26/11. Mọi hạn là 23:00 của ngày được ghi. Bấm vào một story để xem chi tiết; tài liệu đầy đủ nằm trong <span class="id">docs/handover/</span>.</p>
   </header>
 
   <section aria-labelledby="h-miles">
-    <h2 id="h-miles">Các mốc</h2>
+    <h2 id="h-miles">Các mốc chung</h2>
     <ul class="miles" id="miles"></ul>
   </section>
 
@@ -131,121 +135,119 @@ tr:last-child td { border-bottom: 0; }
     <div class="legend">
       <span><i class="sw must"></i> Bắt buộc</span>
       <span><i class="sw should"></i> Nên có, cắt trước nếu trễ</span>
-      <span><i class="dot"></i> Team khác đang chờ story này</span>
+      <span><i class="sw opt"></i> Chỉ làm nếu còn thời gian</span>
+      <span>Thứ Bảy 21 và Chủ nhật 22/11 không xếp việc (đường gạch giữa 20 và 23/11)</span>
     </div>
     <div class="board-scroll"><div class="board" id="board" role="group" aria-label="Lịch theo người và theo ngày"></div></div>
     <div class="detail" id="detail" aria-live="polite"></div>
   </section>
 
-  <section aria-labelledby="h-hand">
-    <h2 id="h-hand">Bàn giao giữa các team</h2>
-    <p class="lede">Mỗi dòng là một thứ team này nợ team kia. Cột cuối là việc bên nhận làm nếu thứ đó chưa tới, để không ai phải ngồi chờ.</p>
+  <section aria-labelledby="h-int">
+    <h2 id="h-int">Kiểm tích hợp tùy chọn</h2>
+    <p class="lede">Không story nào chờ các mục này. Làm vào ngày kiểm tích hợp nếu bên kia đã hợp nhất; nếu chưa, ghi "chưa kiểm" và đi tiếp. Lệch hợp đồng thì bên sai sửa.</p>
     <div class="tbl-scroll"><table>
-      <thead><tr><th>Hạn (23:00)</th><th>Giao</th><th>Nhận</th><th>Thứ được giao</th><th>Nếu trễ, bên nhận làm gì</th></tr></thead>
-      <tbody id="hand"></tbody>
+      <thead><tr><th>Mã</th><th>Ngày</th><th>Các team</th><th>Kiểm gì</th><th>Bên kia chưa xong thì</th></tr></thead>
+      <tbody id="ints"></tbody>
     </table></div>
   </section>
 
   <section aria-labelledby="h-scope">
-    <h2 id="h-scope">Phạm vi so với kế hoạch 4 tuần cũ</h2>
+    <h2 id="h-scope">Phạm vi</h2>
     <div class="cols">
-      <div class="box"><h3>Thu nhỏ</h3><ul>
-        <li><span class="id">C-06</span> chỉ áp dụng xác thực JWT cho user-qr</li>
-        <li><span class="id">D-03</span> Team B viết kho thông điệp đã xử lý (B-10), Team D nối vào 3 consumer</li>
-        <li><span class="id">D-04</span> chỉ áp sự kiện hiệu chỉnh lên read model</li>
-        <li><span class="id">D-06</span> không làm scheduler thử lại</li>
-        <li><span class="id">D-07</span> chỉ làm cảnh báo hạn chót ngày 1</li>
-        <li><span class="id">D-08</span> chỉ làm chuỗi băm</li>
+      <div class="box"><h3>Đã xong trước 16/11 (bước gỡ phụ thuộc)</h3><ul>
+        <li><span class="id">A-10</span>, <span class="id">B-04</span>, <span class="id">B-05</span>, <span class="id">B-10</span>, <span class="id">C-04</span>, <span class="id">C-06</span> (user-qr), <span class="id">D-01</span></li>
+        <li>Phần lớn <span class="id">A-01</span>, <span class="id">B-01</span>, <span class="id">B-02</span>, <span class="id">C-01</span>, <span class="id">D-02</span>, <span class="id">D-03</span></li>
+        <li>209 test đơn vị (10 bỏ qua), 27 test tích hợp, 0 lỗi</li>
       </ul></div>
       <div class="box"><h3>Cắt khỏi đợt này</h3><ul>
-        <li><span class="id">A-07</span> cảnh báo trực tiếp cho bảo vệ, <span class="id">A-08</span> callback từ cổng</li>
-        <li><span class="id">B-07</span> xác minh mở thủ công, <span class="id">B-09</span> tham số quản trị</li>
-        <li><span class="id">C-03</span> vòng đời nhân viên, <span class="id">C-07</span> quản lý tài khoản, <span class="id">C-09</span></li>
-        <li><span class="id">D-09</span> kịch bản sự cố tự động, <span class="id">D-10</span> portal đăng nhập thật, <span class="id">D-11</span> Dockerfile</li>
+        <li><span class="id">A-07</span>, <span class="id">A-08</span>, <span class="id">B-09</span></li>
+        <li><span class="id">C-03</span>, <span class="id">C-07</span>, <span class="id">C-09</span>; hết hạn phiên theo hoạt động</li>
+        <li><span class="id">D-09</span>, <span class="id">D-10</span>, <span class="id">D-11</span></li>
       </ul><p class="note">Mọi mục bị cắt hoặc thu nhỏ phải có trong phần "Hạn chế" của báo cáo.</p></div>
-      <div class="box"><h3>Thứ tự cắt nếu tới 20/11 còn chậm</h3>
-        <p class="id" style="line-height:1.9">C-08 → A-06 → B-08 → D-13 → C-05 → A-10 → D-07 → D-08 → C-06 → D-04</p>
-        <p class="note">Không cắt: A-01, B-01, B-02, C-01 (kiểm chứng hạ tầng), A-02, A-03 (lỗ hổng anti-passback), D-12 (báo cáo).</p></div>
+      <div class="box"><h3>Thứ tự cắt khi trễ</h3>
+        <p class="id" style="line-height:1.9">D-16 → C-12 → B-07 → A-05 → D-14 → B-08 → A-06 → D-03 → C-11 → D-15 → D-13</p>
+        <p class="note">Không cắt: A-02, A-03, A-04, A-09, B-06, C-02, C-08, D-04, D-06, D-08, D-12. Quyết định ở K1 (19/11) hoặc K2 (23/11).</p></div>
     </div>
   </section>
 </div>
 
 <script>
 (function () {
-  var DAYS = [['N1','Năm','12/11'],['N2','Sáu','13/11'],['N3','Hai','16/11'],['N4','Ba','17/11'],['N5','Tư','18/11'],
-              ['N6','Năm','19/11'],['N7','Sáu','20/11'],['N8','Hai','23/11'],['N9','Ba','24/11'],['N10','Tư','25/11']];
+  // 9 calendar days on the board; the weekend 21-22/11 is skipped (dashed line before 23/11).
+  var DAYS = [['Hai','16/11'],['Ba','17/11'],['Tư','18/11'],['Năm','19/11'],['Sáu','20/11'],
+              ['Hai','23/11'],['Ba','24/11'],['Tư','25/11'],['Năm','26/11']];
   var MILES = [
-    ['12/11 · 23:00','M0 Khởi động','Ai cũng chạy được stack local, 3 demo và app nhân viên'],
-    ['13/11 · 23:00','M1 Đóng băng hợp đồng','docs/api khớp mã và có đủ trường, endpoint mới'],
-    ['18/11 · 23:00','M2 Hạ tầng thật','Redis, PostgreSQL, RabbitMQ đã kiểm chứng; JWT đã cấp được'],
-    ['20/11 · 23:00','Bản nháp báo cáo','Mỗi team nộp phần của mình'],
-    ['23/11 · 23:00','M3 Đủ tính năng','Mọi story bắt buộc đã hợp nhất'],
-    ['24/11 · 23:00','M4 Đóng băng mã','Chỉ sửa lỗi; tổng duyệt demo'],
-    ['25/11 · 23:00','M5 Nộp','PDF báo cáo, URL GitHub, tag']
+    ['16/11 · sáng','Việc 0','Nhánh chore/x/decouple-teams vào main; mọi team bắt đầu', 1, 'Việc 0'],
+    ['19/11 · 23:00','K1 Kiểm tích hợp giữa kỳ','I-1, I-2, I-3, tùy chọn', 4, 'K1'],
+    ['20/11 · 23:00','Bản nháp báo cáo','Team A, B, C', 5, 'Nháp'],
+    ['23/11 · 23:00','K2 Tích hợp đầy đủ','Mọi story bắt buộc đã vào main; I-4 đến I-7', 6, 'K2'],
+    ['24/11 · 23:00','Đóng băng mã','Chỉ sửa lỗi; tổng duyệt demo lần 1', 7, 'Đóng băng'],
+    ['25/11 · 23:00','Hợp nhất báo cáo','D-12, PDF; tổng duyệt lần 2; dự phòng', 8, 'Báo cáo'],
+    ['26/11 · 23:00','Nộp bài','PDF có URL GitHub, thẻ m2-submission', 9, 'Nộp']
   ];
-  var LANES = [['A','1','Gate Station'],['A','2','Gate Station'],['B','1','Attendance'],['B','2','Attendance'],
-               ['C','1','QR, Identity'],['C','2','QR, Identity'],['D','1','Kiosk, Central'],['D','2','Kiosk, Central']];
-  // [id, lane, startDay, endDay (exclusive, halves allowed), must?, title, needs, waitedBy, ifLate, done]
+  var LANES = [['A','1','Gate Station'],['A','2',''],['B','1','Attendance'],['B','2',''],
+               ['C','1','QR, Identity'],['C','2',''],['D','1','Kiosk, Central'],['D','2','']];
+  // [id, lane, startDay, endDay (exclusive, halves allowed; day index 1 = 16/11), level B/N/T, title, codeAgainst, done]
   var S = [
-    ['A-04','A1',2,7,1,'Kho cấu hình cổng bằng PostgreSQL','Database riêng trong compose (Team D)','','Profile local vẫn chạy bằng dữ liệu mẫu trong application.yml','SYSTEM_ADMIN thêm, sửa, đặt bảo trì cổng qua API; đặt bảo trì thì lượt quét kế tiếp bị từ chối ngay'],
-    ['A-10','A1',7,7.5,0,'Danh bạ nhân viên từ gói đồng bộ','C-02: hợp đồng 13/11, dữ liệu thật 19/11','','Dùng JSON mẫu theo hợp đồng; hoặc cắt và giữ danh sách trong application.yml','Vô hiệu hóa nhân viên ở user-qr thì cổng từ chối sau một chu kỳ làm mới'],
-    ['A-06','A1',7.5,8,0,'Trả chiều ra vào khi kiosk gửi lại','B-04 (13/11)','','Hoãn; không chặn việc nào','Lượt gửi lại nhận đủ chiều như lần đầu'],
-    ['A-09','A1',8,9,1,'Kiểm thử tải 800 lượt trong 30 phút','A-01 và B-01 (hạ tầng thật)','Team D cần số đo cho báo cáo','Đo với adapter trong bộ nhớ và ghi rõ điều kiện đo','Bảng p50, p95, p99, tỷ lệ lỗi, kèm lệnh chạy lại'],
-    ['A-05','A2',1,2,0,'Test hợp đồng với turnstile-simulator thật','Không','','','Bao phủ 5 chế độ lỗi và ngưỡng chờ 800 ms'],
-    ['A-01','A2',2,5,1,'Kiểm chứng hai adapter Redis','Docker','A-03, A-09','','Hai luồng cùng giữ một jti chỉ một bên thắng; khóa USED còn sau khi Redis khởi động lại'],
-    ['A-03','A2',5,6.5,1,'Dựng lại anti-passback khi Redis mất dữ liệu','B-05 (13/11), A-01','','Viết theo hợp đồng, test bằng FakeAttendanceGateway','Xóa trạng thái rồi quét ENTRY lần hai ở cổng một chiều vẫn bị từ chối'],
-    ['A-02','A2',6.5,8,1,'Đồng bộ anti-passback sau khi nhập lô offline','Không','','','Vào offline, gửi lô, vào lại online ở cổng một chiều bị từ chối'],
-    ['A-09','A2',8,9,1,'Kiểm thử tải (cùng A1)','A-01 và B-01','Team D','Như trên','Như trên'],
+    ['A-04','A1',1,4,'B','Kho cấu hình cổng trên gate_store, API quản trị','Bảng gates của gate_store (V1), kiosk-edge.openapi.yaml, Rbac','IT thêm, sửa, đặt bảo trì cổng; vai khác 403; đặt bảo trì thì lượt quét kế tiếp GATE_IN_MAINTENANCE'],
+    ['A-12','A1',4,5,'B','Audit cổng qua JdbcOutboxStore và AuditOutbox','platform/messaging, bảng outbox_events, mẫu OutboxConfig của user-qr','GateStoreIT: mở thủ công ghi một dòng PENDING, lỗi giữa chừng không ghi, relay đẩy lên RabbitMQ'],
+    ['A-11','A1',5,5.5,'B','PrincipalResolver ở SecurityController','identity.openapi.yaml, TestTokens, mẫu BearerTokenApiTest','Bearer hợp lệ mở được cổng; token hết hạn hoặc khóa lạ 401'],
+    ['R-A','A1',5.5,6,'B','Phần báo cáo Team A, bản nháp','docs/report/README.md','Bản nháp trong docs/report/'],
+    ['A-09','A1',6,7,'B','Kiểm thử tải, đo cùng A2','Stack local, turnstile-simulator','Bảng p50, p95, p99, tỷ lệ lỗi, điều kiện đo, lệnh chạy lại'],
+    ['R-A','A1',7,8,'B','Phần báo cáo Team A, bản cuối (và sửa lỗi, tổng duyệt)','docs/report/README.md','Bản cuối trong docs/report/'],
+    ['A-03','A2',1,2,'B','Dựng lại anti-passback từ lastDirection','IAttendanceGateway.lastDirection, FakeAttendanceGateway','Xóa trạng thái anti-passback, ENTRY lần hai ở cổng một chiều vẫn ANTI_PASSBACK_VIOLATION'],
+    ['A-06','A2',2,2.5,'N','Trả chiều khi kiosk gửi lại','AttemptState.direction, AttemptView','Lượt gửi lại nhận đủ chiều như lần đầu'],
+    ['A-01','A2',2.5,3,'B','Phần còn lại: Redis khởi động lại với AOF','TmcContainers','RedisAdaptersIT: jti đã dùng vẫn bị chặn sau khi Redis khởi động lại'],
+    ['A-02','A2',3,5,'B','Đồng bộ anti-passback sau nhập lô offline','FakeAttendanceGateway, kiosk-edge.openapi.yaml','Vào offline, gửi lô, vào lại online ở cổng một chiều bị từ chối; bản ghi cũ hơn không ghi đè'],
+    ['A-05','A2',5,5.5,'N','Test hợp đồng với turnstile-simulator thật','turnstile.openapi.yaml','5 chế độ lỗi và ngưỡng chờ 800 ms'],
+    ['A-09','A2',5.5,7,'B','Kiểm thử tải: chuẩn bị 20/11, đo cùng A1 23/11','Stack local, PhoneSimulator hoặc device-simulator','Số đo nộp vào docs/report/ trước 23:00 ngày 23/11'],
 
-    ['B-05','B1',1,3,1,'API chiều của lượt công gần nhất, và lược đồ AttendanceCorrected','Không','Team A (A-03), Team D (D-04)','','Endpoint last-direction có trong OpenAPI; lược đồ sự kiện có trong AsyncAPI; hợp nhất trước 23:00 ngày 13/11'],
-    ['B-01','B1',3,5,1,'Kiểm chứng tầng JDBC và Flyway','Docker','B-02, A-09','','PersistenceAndBrokerIT xanh; 3 demo qua với PostgreSQL thật; có test rollback'],
-    ['B-06','B1',5,8,1,'Hiệu chỉnh chấm công, phát AttendanceCorrected','Không','Team D (D-04)','','Hiệu chỉnh tạo bản ghi mới liên kết bản gốc, phát sự kiện với phiên bản tăng, có audit'],
-    ['B-04','B2',1,3,0,'Thêm direction và employeeUuid vào AttemptView','Không','Team A (A-06)','','Hai trường mới có trong API và OpenAPI'],
-    ['B-02','B2',3,5.5,1,'Outbox với RabbitMQ thật','Docker','Team D (D-03), Team C (C-08). Nằm trên đường găng','','Dừng broker thì sự kiện còn PENDING; bật lại thì phát đủ, đúng thứ tự, không trùng'],
-    ['B-10','B2',5.5,6,0,'JdbcProcessedMessageStore trong platform/messaging','B-01','Team D (D-03)','','Cùng message_id chèn hai lần thì lần hai báo đã xử lý'],
-    ['B-03','B2',6,8,1,'Hàng đợi bất thường cho HR','Không','','','HR liệt kê được lượt có cờ bất thường; vai trò khác nhận 403'],
-    ['B-08','B2',8,9,0,'Chỉ số vận hành outbox và GATE_UNKNOWN','Không','','','Chỉ số có ở /actuator'],
+    ['B-06','B1',1,4,'B','Hiệu chỉnh chấm công: use case và endpoint HR','AttendanceCorrection, IAttendanceCorrectionRepository, CorrectionPayload trong AsyncAPI, TestTokens','Bản hiệu chỉnh liên kết bản gốc, outbox AttendanceCorrected và AuditRecorded cùng transaction, lũy đẳng, vai khác 403'],
+    ['B-07','B1',4,5.5,'N','Xác minh lượt mở thủ công','AttendanceConfirmed (không đổi lược đồ), ManualOpenTest','Lượt MANUAL đã xác minh sinh bản ghi công và AttendanceConfirmed'],
+    ['R-B','B1',5.5,6,'B','Phần báo cáo "mất kết nối", bản nháp','ADR-11, Adr11ResilienceTest','Bản nháp trong docs/report/'],
+    ['R-B','B1',6,8,'B','Phần báo cáo "mất kết nối", hoàn thiện và bản cuối','ADR-11, ADR-15','Bản cuối trước 23:00 ngày 24/11'],
+    ['B-01','B2',1,1.5,'B','Phần còn lại: test rollback trên PostgreSQL','SpringTransactionRunner, TmcContainers','Use case ném lỗi thì không còn lượt quét lẫn dòng outbox'],
+    ['B-02','B2',1.5,3,'B','Phần còn lại: dừng và bật lại RabbitMQ','tmc.events, MessagingInfraIT','Dừng broker: dòng còn PENDING; bật lại: phát đủ, đúng thứ tự, không trùng'],
+    ['B-03','B2',3,5,'B','Hàng đợi bất thường cho HR','Anomaly, PrincipalResolver','HR lọc theo nhà máy và thời gian; vai khác 403'],
+    ['B-08','B2',5,6,'N','Chỉ số vận hành outbox và GATE_UNKNOWN','Micrometer','Hai chỉ số đọc được từ MeterRegistry'],
+    ['R-B','B2',6,7,'B','Bằng chứng cho báo cáo; 3 demo với attendance trên PostgreSQL (I-6)','make up, scripts/demo','Bằng chứng trong docs/report/'],
 
-    ['JWT','C1',1,2,1,'Hợp đồng JWT: claim, JWKS, token mẫu','Không','Cả ba team còn lại','','Tệp OpenAPI của identity trong docs/api, trước 23:00 ngày 13/11'],
-    ['C-04','C1',2,6,1,'Cấp JWT ES256 và JWKS','Không','Team D (D-13), C-06','','Token hết hạn bị từ chối; JWKS xoay khóa được; hai test @Disabled được bật'],
-    ['C-06','C1',6,8,1,'Xác thực JWT ở user-qr','C-04','D-13','','Token sai hoặc hết hạn nhận 401; header X-Subject giả bị bỏ qua ở profile mặc định'],
-    ['C-08','C1',8,9,0,'Audit của user-qr và identity qua outbox','B-02 (18/11)','','Cắt đầu tiên nếu trễ','Đăng ký và thu hồi thiết bị xuất hiện trong nhật ký kiểm toán'],
-    ['C-10','C2',1,2,1,'Mô hình đe dọa QR (làm xen kẽ tới 20/11)','Không','','','Mỗi mối đe dọa trỏ tới một test'],
-    ['EMP','C2',2,3,1,'Hợp đồng employees trong gói đồng bộ','Không','Team A (A-10)','','Trường employees có trong OpenAPI trước 23:00 ngày 13/11'],
-    ['C-01','C2',3,4.5,1,'Kiểm chứng JdbcDeviceKeyRegistry','Docker','','','Hai lệnh đăng ký song song: chỉ mục duy nhất từ chối một bên'],
-    ['C-02','C2',4.5,7,1,'Nhân viên đủ quyền trong gói đồng bộ','Không','Team A (A-10)','','Gói đồng bộ trả employees thay đổi sau mốc; vô hiệu hóa thì thu hồi thiết bị'],
-    ['C-05','C2',7,8,0,'TOTP cho MFA','Không','','Cắt thứ hai nếu trễ','Mã đúng, mã sai, mã lệch một bước thời gian'],
-    ['D-13','C2',8,9,0,'Kiểm phía server khi app nhân viên dùng JWT','C-04, C-06','','Cắt nếu C-04 trễ','Đăng ký thiết bị chạy bằng JWT'],
+    ['C-08','C1',1,3,'B','Audit của user-qr và identity qua AuditOutbox','platform/messaging, UserQrPersistenceIT','Đăng ký thiết bị ghi đúng một dòng outbox; lỗi giữa chừng không ghi; sự kiện khóa tài khoản không chứa mật khẩu'],
+    ['C-11','C1',3,5,'N','Database cho identity, outbox bền','Database identity trong docker/init/central, JdbcOutboxStore','IT: dòng outbox còn PENDING sau khi tạo lại context và được phát sau đó'],
+    ['C-12','C1',5,6,'N','Xoay khóa ký JWT','TestJwtKeys, JwtPrincipalVerifier','Token ký bằng khóa cũ còn hạn vẫn được chấp nhận; JWKS có hai khóa'],
+    ['R-C','C1',6,8,'B','Phần báo cáo "QR tĩnh", hoàn thiện; kiểm I-4, I-5','ADR-12, C-10','Bản cuối trước 23:00 ngày 24/11'],
+    ['C-01','C2',1,1.5,'B','Phần còn lại: hai đăng ký song song','user-qr.openapi.yaml','Đúng một bên thắng, bên kia 409'],
+    ['C-02','C2',1.5,4,'B','Nguồn HR cho danh bạ nhân viên ở user-qr','employees[] trong user-qr.openapi.yaml, employee-seed.json','Đổi trạng thái thì lần đồng bộ sau trả INACTIVE, thiết bị bị thu hồi; EmployeeSeedContractTest xanh'],
+    ['C-05','C2',4,5,'B','TOTP cho MFA','IMfaVerifier, RFC 6238','Mã đúng, sai, lệch một bước; mã đã dùng không dùng lại'],
+    ['C-10','C2',5,6,'B','Mô hình đe dọa, bản nháp phần "QR tĩnh"','privacy-notes.md, Adr12TokenVerificationTest','Mỗi mối đe dọa trỏ tới một test có thật'],
+    ['R-C','C2',6,8,'B','Phần báo cáo "QR tĩnh", hoàn thiện và bản cuối','ADR-12','Bản cuối trước 23:00 ngày 24/11'],
 
-    ['D-01','D1',1,2,1,'Kiểm chứng docker compose trên macOS và Windows','Docker','Cả nhóm','Test tích hợp dùng Testcontainers, không phụ thuộc compose','Ghi kết quả vào troubleshooting.md'],
-    ['D-06','D1',2,6,1,'Adapter HTTP sang HR/Payroll, tra cứu trước khi gửi lại','Không','','','HR không trả lời thì UNKNOWN; lần sau tra cứu trước, không gửi trùng'],
-    ['D-03','D1',6,7,1,'Consumer thật cho hr-integration','B-02, B-10 (18/11)','','Tự đẩy sự kiện lên RabbitMQ bằng RabbitTemplate; dùng kho trong bộ nhớ trước','Gửi trùng không nhân đôi; thông điệp lỗi vào DLQ'],
-    ['D-07','D1',7,8,1,'Cảnh báo hạn chót ngày 1 hằng tháng','Không','','','Test với đồng hồ giả: cảnh báo lúc 08:00, báo động lúc 12:00'],
-    ['D-12','D1',8,11,1,'Hợp nhất báo cáo và nộp','Bản nháp của 4 team (20/11), số đo A-09 (23/11)','','Phần thiếu ghi "chưa nộp" và báo lead','PDF qua hết release-checklist; nộp 25/11'],
-    ['D-14','D2',1,1.5,0,'Sửa 20 test kiosk lỗi trên Windows','Không','','','Test kiosk xanh trên Windows và macOS'],
-    ['D-02','D2',1.5,3.5,1,'CI trên mọi PR','Không','Cả nhóm','Tự chạy spotlessApply test trước khi mở PR','Build, test, kiến trúc, định dạng, hai ứng dụng web; job tích hợp riêng'],
-    ['D-05','D2',3.5,5,1,'Quy tắc gian lận R4','Không','','','BD rồi LA cách 10 phút sinh cảnh báo'],
-    ['D-08','D2',5,6,1,'Chuỗi băm cho nhật ký kiểm toán','Không','','','Sửa một bản ghi thì kiểm tra chuỗi phát hiện được'],
-    ['D-03','D2',6,8,1,'Consumer thật cho reporting và audit-admin','B-02, B-10 (18/11)','','Như D-03 của D1','Như D-03 của D1'],
-    ['D-04','D2',8,9,1,'Áp sự kiện hiệu chỉnh lên read model; app dùng JWT (D-13)','Lược đồ (13/11), B-06 (20/11)','','Test bằng sự kiện tự tạo theo lược đồ','Bản hiệu chỉnh thay bản gốc trong read model']
+    ['D-06','D1',1,3,'B','Adapter HR/Payroll, tra cứu trước khi gửi lại, AttendanceCorrected (sáng 16/11: Việc 0)','hr-payroll.openapi.yaml, CorrectionPayload, HR giả trong test','Bật should_look_up_the_result_before_resending_an_unknown_event; test cho bản hiệu chỉnh'],
+    ['D-07','D1',3,4,'B','Cảnh báo hạn chót ngày 1','IClock giả','Bật should_raise_a_deadline_alert_before_noon_on_the_first_day_of_the_month'],
+    ['D-02','D1',4,4.5,'B','Phần còn lại: CODEOWNERS, bảo vệ nhánh, 5 check bắt buộc','release-checklist.md, ci.yml (build, employee-app, portal, integration, demo)','PR cố ý đỏ không hợp nhất được; đẩy thẳng lên main bị từ chối'],
+    ['D-03','D1',4.5,5,'N','Phần còn lại: cảnh báo DLQ','HrAttendanceListenerIT','Sau khi thông điệp vào DLQ, chỉ số hoặc endpoint báo 1'],
+    ['D-15','D1',5,6,'N','Kiosk dùng employees khi offline','employees[] trong kiosk-edge.openapi.yaml, FakeEdge','Offline: nhân viên INACTIVE hoặc sai nhà máy bị từ chối'],
+    ['D-12','D1',6,10,'B','Hợp nhất báo cáo, PDF ngày 25/11, nộp 26/11','Bản nháp của A, B, C; số đo A-09','Qua hết release-checklist.md'],
+    ['D-05','D2',1,2,'B','Quy tắc gian lận R4','FraudRule, sự kiện tự dựng theo AsyncAPI','Bật should_flag_two_entries_in_different_factories_ten_minutes_apart'],
+    ['D-04','D2',2,3.5,'B','Read model JDBC chung transaction với dedup','IdempotentConsumer.TransactionRunner, Presence.supersededBy','Hiện diện còn sau khởi động lại; lỗi thì read model lẫn dấu dedup đều không ghi'],
+    ['D-08','D2',3.5,5,'B','Kho audit bền chỉ INSERT và chuỗi băm','IAuditStore, AuditRecorded','Bật should_detect_a_modified_entry_through_the_hash_chain; UPDATE bằng role của service bị từ chối'],
+    ['D-13','D2',5,6.5,'N','Portal và app nhân viên gửi Bearer; PrincipalResolver ở 3 service trung tâm','identity.openapi.yaml, TestTokens','Header Authorization được gửi, 401 về đăng nhập; Bearer hợp lệ được, token lạ 401'],
+    ['D-14','D2',6.5,7,'N','Test kiosk trên Windows','Journal là AutoCloseable','Test kiosk-simulator xanh trên Windows'],
+    ['D-16','D2',7,8,'T','Thử trang /kiosk bằng webcam và điện thoại thật, trong tổng duyệt','02-chay-local.md mục 5.4, 5.5','Kết quả ghi vào troubleshooting.md'],
   ];
-  var HAND = [
-    ['12/11','D','A, B, C','docker compose chạy được','Test tích hợp dùng Testcontainers'],
-    ['13/11','B','A','B-05 last-direction, B-04 direction trong AttemptView','Viết theo hợp đồng, test bằng bản giả'],
-    ['13/11','B','D, C','Lược đồ AttendanceCorrected','Tự tạo sự kiện mẫu trong test'],
-    ['13/11','C','A, B, D','Hợp đồng JWT','Tiếp tục dùng header X-Subject'],
-    ['13/11','C','A','Hợp đồng employees trong gói đồng bộ','Dùng JSON mẫu'],
-    ['16/11','D','A, B, C','CI trên mọi PR','Tự chạy kiểm tra trước khi mở PR'],
-    ['18/11','B','D, C','B-02: outbox phát lên RabbitMQ thật','D tự đẩy sự kiện bằng RabbitTemplate; C-08 lùi hoặc cắt'],
-    ['18/11','B','D','B-10: JdbcProcessedMessageStore','Dùng kho trong bộ nhớ, nối bản JDBC sau'],
-    ['18/11','C','D','identity cấp JWT và có JWKS','Cắt D-13'],
-    ['19/11','C','A','C-02: employees thật trong gói đồng bộ','Dùng JSON mẫu, hoặc cắt A-10'],
-    ['20/11','B','D','B-06: sự kiện AttendanceCorrected thật','Chỉ kiểm bằng sự kiện mẫu'],
-    ['20/11','A, B, C, D','D','Bản nháp phần báo cáo','D hợp nhất phần đã có, báo lead phần thiếu'],
-    ['23/11','A','D','Số đo kiểm thử tải','Báo cáo không nêu con số hiệu năng']
+  var INTS = [
+    ['I-1','19/11','A, B','A-03 gọi last-direction thật khi Redis mất dữ liệu','Ghi "chưa kiểm", thử lại 23/11'],
+    ['I-2','19/11','C, A','C-02 đổi trạng thái nhân viên; sau tối đa 30 giây gate-station trả EMPLOYEE_INACTIVE','Như trên'],
+    ['I-3','19/11','B, D','B-06 phát AttendanceCorrected qua RabbitMQ; reporting áp, hr-integration gửi','Như trên'],
+    ['I-4','23/11','A, C, D','Audit từ gate-station, user-qr, identity vào kho audit bền (GET /admin/v1/audit)','Ghi vào phần hạn chế'],
+    ['I-5','23/11','A, C, D','Bearer đầu-cuối: app và portal tới user-qr, gate-station, 3 service trung tâm','Ghi vào phần hạn chế; portal chạy ở local'],
+    ['I-6','23/11','cả nhóm','7 service ở profile mặc định và turnstile-simulator trên make up, chạy 3 demo (chưa kiểm chứng)','Demo dùng stack local; ghi điều kiện vào báo cáo'],
+    ['I-7','23/11','A, D','A-09 đo trên stack Docker','Dùng số đo trên stack local, ghi rõ điều kiện']
   ];
+  var LEVEL = { B: 'Bắt buộc', N: 'Nên có', T: 'Nếu còn thời gian' };
 
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function col(day) { return (day - 1) * 2 + 1; }
 
   var miles = document.getElementById('miles');
   MILES.forEach(function (m) {
@@ -255,62 +257,74 @@ tr:last-child td { border-bottom: 0; }
   var board = document.getElementById('board');
   board.appendChild(el('div', 'hd corner', 'Người'));
   DAYS.forEach(function (d, i) {
-    var h = el('div', 'hd' + (i === 2 || i === 7 ? ' wk' : ''));
+    var h = el('div', 'hd' + (i === 5 ? ' wk' : ''));
     h.style.gridColumn = 'span 2';
-    h.appendChild(el('b', null, d[2])); h.appendChild(document.createTextNode('Thứ ' + d[1]));
+    h.appendChild(el('b', null, d[1])); h.appendChild(document.createTextNode('Thứ ' + d[0]));
     board.appendChild(h);
   });
 
+  // shared milestone lane
+  board.appendChild((function () { var l = el('div', 'lane'); l.appendChild(el('b', null, 'Mốc')); l.appendChild(document.createTextNode('chung')); return l; })());
+  var mt = el('div', 'track');
+  MILES.forEach(function (m) {
+    var d = el('div', 'mile', m[4]);
+    d.title = m[0] + ': ' + m[1] + '. ' + m[2];
+    d.style.gridColumn = col(m[3]) + ' / ' + (col(m[3]) + 2);
+    d.style.gridRow = '1';
+    mt.appendChild(d);
+  });
+  board.appendChild(mt);
+
   var detail = document.getElementById('detail');
   var buttons = [];
+  function dayName(x) { return DAYS[Math.min(DAYS.length, Math.max(1, x)) - 1][1]; }
   function show(s, btn) {
     buttons.forEach(function (b) { b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'); });
     detail.textContent = '';
     var head = el('header');
     head.appendChild(el('span', 'id', s[0])); head.appendChild(el('h3', null, s[5]));
-    head.appendChild(el('span', 'tag', s[4] ? 'Bắt buộc' : 'Nên có'));
-    if (s[7]) head.appendChild(el('span', 'tag wait', 'Có team đang chờ'));
+    head.appendChild(el('span', 'tag', LEVEL[s[4]]));
     detail.appendChild(head);
     function dl(pairs) {
       var d = el('dl');
       pairs.forEach(function (p) { if (!p[1]) return; var w = el('div'); w.appendChild(el('dt', null, p[0])); w.appendChild(el('dd', null, p[1])); d.appendChild(w); });
       return d;
     }
-    var first = DAYS[Math.floor(s[2]) - 1], last = DAYS[Math.min(10, Math.ceil(s[3]) - 1) - 1];
-    var when = first[2] === last[2] ? first[2] : first[2] + ' đến ' + last[2];
-    detail.appendChild(dl([['Người làm', 'Team ' + s[1][0] + ', người ' + s[1][1]], ['Thời gian', when + ' (hạn 23:00 ngày cuối)'], ['Cần có trước', s[6]], ['Ai đang chờ', s[7]]]));
-    detail.appendChild(dl([['Xong khi', s[9]], ['Nếu thứ nó chờ bị trễ', s[8]]]));
+    var first = dayName(Math.floor(s[2])), last = dayName(Math.ceil(s[3]) - 1);
+    var when = (first === last ? first : first + ' đến ' + last) + (s[2] % 1 ? ' (bắt đầu buổi chiều)' : '') + (s[3] % 1 ? ' (xong buổi sáng)' : '');
+    detail.appendChild(dl([['Người làm', 'Team ' + s[1][0] + ', người ' + s[1][1]], ['Thời gian', when + ', hạn 23:00 ngày cuối'], ['Chờ team khác', 'Không. Phần cần mã thật của team khác là kiểm tích hợp tùy chọn']]));
+    detail.appendChild(dl([['Code theo', s[6]], ['Xong khi', s[7]]]));
   }
 
   var selected = null;
   LANES.forEach(function (ln, idx) {
     var key = ln[0] + ln[1], first = ln[1] === '1';
-    var label = el('div', 'lane' + (first && idx ? ' first' : ''));
-    label.appendChild(el('b', null, key)); label.appendChild(document.createTextNode(first ? ln[2] : ''));
+    var label = el('div', 'lane' + (first ? ' first' : ''));
+    label.appendChild(el('b', null, key)); label.appendChild(document.createTextNode(ln[2]));
     board.appendChild(label);
-    var track = el('div', 'track' + (first && idx ? ' first' : ''));
+    var track = el('div', 'track' + (first ? ' first' : ''));
     S.filter(function (s) { return s[1] === key; }).forEach(function (s) {
-      var b = el('button', 'bar' + (s[4] ? '' : ' should') + (s[7] ? ' wait' : ''));
+      var b = el('button', 'bar' + (s[4] === 'N' ? ' should' : s[4] === 'T' ? ' opt' : ''));
       b.type = 'button';
       b.style.gridColumn = ((s[2] - 1) * 2 + 1) + ' / ' + ((s[3] - 1) * 2 + 1);
+      b.style.gridRow = '1';
       b.title = s[0] + ': ' + s[5];
       b.setAttribute('aria-pressed', 'false');
-      var show0 = /^[A-D]-/.test(s[0]);
-      if (show0) b.appendChild(el('span', 'id', s[0]));
-      b.appendChild(document.createTextNode(show0 ? s[5] : s[5]));
+      b.appendChild(el('span', 'id', s[0]));
+      b.appendChild(document.createTextNode(s[5]));
       b.addEventListener('click', function () { show(s, b); });
       buttons.push(b); track.appendChild(b);
-      if (s[0] === 'B-02') selected = [s, b];
+      if (s[0] === 'B-06') selected = [s, b];
     });
     board.appendChild(track);
   });
   if (selected) show(selected[0], selected[1]);
 
-  var hand = document.getElementById('hand');
-  HAND.forEach(function (h) {
+  var ints = document.getElementById('ints');
+  INTS.forEach(function (h) {
     var tr = el('tr');
-    h.forEach(function (c, i) { tr.appendChild(el('td', i === 0 ? 'd' : null, c)); });
-    hand.appendChild(tr);
+    h.forEach(function (c, i) { tr.appendChild(el('td', i < 2 ? 'd' : null, c)); });
+    ints.appendChild(tr);
   });
 })();
 </script>
