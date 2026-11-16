@@ -1,10 +1,8 @@
 # Phân chia công việc M2 (4 team, mỗi team 2 người)
 
-Tài liệu này là nguồn sự thật duy nhất về **ai làm gì, theo thứ tự nào, xong khi nào**. Mọi thay đổi phân công phải sửa ở đây trong một PR riêng (`docs(team): ...`) và báo trong buổi họp nhóm.
+Tài liệu này giữ **quyền sở hữu, backlog story, hợp đồng giữa các team, phân công báo cáo và định nghĩa "xong"**. Mọi thay đổi phân công phải sửa ở đây trong một PR riêng (`docs(team): ...`) và báo trong họp đứng.
 
-> **Lịch đã đổi (11/11/2026):** dự án chạy trong 10 ngày làm việc, từ 12/11 đến 25/11/2026. Lịch, thứ tự bàn giao giữa các team và phạm vi bị cắt nằm ở [`docs/handover/01-ke-hoach.md`](../handover/01-ke-hoach.md), và **thay thế mục 3, 6, 7 của tài liệu này**. Mục 1, 4, 5, 8, 9 (quyền sở hữu, backlog, hợp đồng, báo cáo, định nghĩa "xong") vẫn dùng. Bảng "Hiện trạng scaffold" ở mục 2 là số liệu của máy tạo scaffold; số liệu kiểm chứng lại nằm ở [`docs/handover/README.md`](../handover/README.md).
-
-> **Cần điền trước tuần 1:** hạn nộp M2 chính thức (đề bài không ghi ngày). Điền vào bảng mốc ở mục 3, các mốc W1 đến W4 bên dưới là tương đối so với ngày bắt đầu.
+> **Lịch:** 16/11 đến 26/11/2026. Đóng băng mã 23:00 ngày 24/11, hợp nhất báo cáo 25/11, **nộp 26/11**. Lịch từng người từng ngày, kiểm tích hợp tùy chọn và thứ tự cắt nằm ở [`docs/handover/01-ke-hoach.md`](../handover/01-ke-hoach.md); chi tiết từng story (tệp, fixture, tiêu chí) ở `docs/handover/team-*.md`. Kế hoạch 4 tuần cũ (W1 đến W4) đã bỏ; xem mục 7.
 
 ## 1. Bốn team và quyền sở hữu
 
@@ -12,10 +10,10 @@ Nguyên tắc chia: **theo bounded context** (ADR-01), không theo actor. Mỗi 
 
 | Team | Thành viên | Sở hữu mã nguồn | Sở hữu tài liệu báo cáo |
 | --- | --- | --- | --- |
-| **A. Gate Station** | `<Tên A1 (lead)>`, `<Tên A2>` | `services/gate-station`, `simulators/turnstile-simulator` | Mục 12.4, 13.1 (luồng quét QR), 16.2, 16.3 (API Kiosk, Turnstile), ADR-13 |
+| **A. Gate Station** | `<Tên A1 (lead)>`, `<Tên A2>` | `services/gate-station`, `simulators/turnstile-simulator` | Mục 12.4, 13.1 (luồng quét QR), 16.2, 16.3 (API Kiosk, Turnstile), ADR-13, ADR-14 |
 | **B. Attendance** | `<Tên B1 (lead)>`, `<Tên B2>` | `services/attendance` | ADR-11, máy trạng thái, mô hình dữ liệu, mục 12.5, 12.7 (Outbox, nhất quán), phần "Issues Encountered: mất kết nối" |
 | **C. User/QR và Identity** | `<Tên C1 (lead)>`, `<Tên C2>` | `services/user-qr`, `services/identity`, `simulators/device-simulator`, `platform/security` | ADR-08, ADR-09, ADR-12, NFR-03/04/05, phần "Issues Encountered: QR tĩnh" |
-| **D. Kiosk, Portal và Central** | `<Tên D1 (lead)>`, `<Tên D2>` | `simulators/kiosk-simulator`, `apps/web-portal`, `services/reporting`, `services/hr-integration`, `services/audit-admin`, `.github`, `docker`, `scripts` | Mục 13.2, 15, 16.4 (HR, triển khai), ma trận truy vết, tích hợp và biên tập báo cáo cuối |
+| **D. Kiosk, Portal và Central** | `<Tên D1 (lead)>`, `<Tên D2>` | `simulators/kiosk-simulator`, `apps/*`, `services/reporting`, `services/hr-integration`, `services/audit-admin`, `.github`, `docker`, `scripts` | Mục 13.2, 15, 16.4 (HR, triển khai), ma trận truy vết, tích hợp và biên tập báo cáo cuối |
 
 Dùng chung (cả bốn team phải duyệt thay đổi): `platform/common-kernel`, `platform/messaging`, `platform/test-support`, `docs/api`, `docs/adr`. Quy tắc ở `CONTRIBUTING.md`.
 
@@ -23,175 +21,151 @@ Dùng chung (cả bốn team phải duyệt thay đổi): `platform/common-kerne
 
 | Vai trò | Trách nhiệm |
 | --- | --- |
-| Lead | Chia nhỏ việc của team thành issue, giữ cam kết với team khác, đại diện team trong họp, là reviewer cuối cho thư mục của team |
-| Đối ứng (pair) | Làm song song, review chéo mọi PR của lead (không tự merge PR của chính mình), thay lead khi vắng |
+| Lead (người 1) | Chia nhỏ việc thành issue, giữ hợp đồng với team khác, đại diện team trong họp, reviewer cuối cho thư mục của team |
+| Đối ứng (người 2) | Làm song song, review chéo mọi PR của lead (không tự merge PR của chính mình), thay lead khi vắng |
 
-Hai người trong một team **luôn review PR của nhau**; thêm **một reviewer thuộc team khác** cho PR chạm vào hợp đồng (API, event, port). Xem `docs/conventions/pr-review-checklist.md`.
+Hai người trong một team **luôn review PR của nhau**; thêm **một reviewer thuộc team khác** cho PR chạm vào hợp đồng (API, event, port) hoặc `platform`. Xem `docs/conventions/pr-review-checklist.md`.
 
-## 2. Hiện trạng scaffold (đã làm sẵn, đã kiểm chứng)
+## 2. Hiện trạng (16/11/2026)
 
-Số liệu lấy từ lần chạy test gần nhất trên máy tạo scaffold. Test đánh dấu "bỏ qua" là các việc còn lại ghi trong mục 4 (mỗi cái có `@Disabled("TODO Team X ...")` kèm tiêu chí).
-
-| Module | Test chạy | Bỏ qua (TODO) | Mức hoàn thiện |
-| --- | --- | --- | --- |
-| `platform/*` | 10 | 0 | Hoàn chỉnh cho M2 |
-| `services/attendance` | 28 | 0 | Sâu: máy trạng thái, outbox, nhập offline, phục hồi, đối soát. Chưa chạy được với Docker |
-| `services/user-qr` | 19 | 0 | Sâu: xác thực JWS, thiết bị, thu hồi, gói đồng bộ |
-| `services/gate-station` | 47 | 0 | Sâu: điều phối 7 bước, chính sách, anti-passback, turnstile ACL, mở thủ công |
-| `simulators/*` | 30 | 0 | Hoàn chỉnh, đã chạy 3 kịch bản demo trên stack thật |
-| `services/reporting` | 9 | 3 | Khung và hiện diện |
-| `services/hr-integration` | 10 | 3 | Khung và luồng từng sự kiện |
-| `services/audit-admin` | 9 | 2 | Khung, nhật ký chỉ thêm |
-| `services/identity` | 13 | 4 | Khóa tài khoản và MFA, chưa cấp JWT |
-| `apps/web-portal` | 5 (vitest) | 0 | Khung 3 trang, build và lint sạch |
-
-**Chưa kiểm chứng:** mọi thứ cần Docker (PostgreSQL, Redis, RabbitMQ): adapter JDBC, Redis, AMQP, Flyway, listener của consumer, `PersistenceAndBrokerIT`. Máy tạo scaffold không bật được Docker. Việc kiểm chứng đầu tiên của tuần 1 là mục **D-01**.
+Số liệu kiểm chứng trên macOS arm64, JDK 21, Docker, sau bước gỡ phụ thuộc ([`docs/handover/_decoupling-changelog.md`](../handover/_decoupling-changelog.md) mục 3): `./gradlew spotlessCheck test` **209 test, 10 bỏ qua, 0 lỗi**; `./gradlew integrationTest` **27 test, 0 lỗi**. Bảng hiện trạng scaffold cũ (145 test, "chưa kiểm chứng mọi thứ cần Docker") không còn đúng và đã bỏ. Những gì còn chưa kiểm chứng: [`docs/handover/README.md`](../handover/README.md), mục "Hiện trạng".
 
 ## 3. Mốc thời gian
 
-| Mốc | Tuần | Điều kiện hoàn thành (kiểm tra được) |
+| Mốc | Ngày (23:00) | Điều kiện hoàn thành (kiểm tra được) |
 | --- | --- | --- |
-| **M-0 Khởi động** | W1 ngày 1 | Mọi người chạy được `make local-up` và `make demo-online`; đã nhận issue |
-| **M-1 Hợp đồng đóng băng** | W1 cuối | OpenAPI và AsyncAPI trong `docs/api` khớp mã; không đổi hợp đồng nếu chưa có ADR |
-| **M-2 Hạ tầng thật chạy** | W2 giữa | `make up` + `make integration` xanh; 3 demo chạy với PostgreSQL, Redis, RabbitMQ |
-| **M-3 Tính năng đủ** | W3 cuối | Mọi story mức Bắt buộc ở mục 4 xong; không còn test `@Disabled` mức Bắt buộc |
-| **M-4 Đóng băng mã** | W4 giữa | Chỉ còn sửa lỗi; báo cáo bản nháp đầy đủ |
-| **M-5 Nộp** | `<điền hạn>` | Báo cáo PDF + URL GitHub trên LMS, theo `docs/runbook/release-checklist.md` |
-
-Hạn nộp thực tế phải lùi lại 2 ngày so với M-5 để dự phòng.
+| Việc 0 | 16/11 (sáng) | Nhánh `chore/x/decouple-teams` đã vào `main`, CI xanh |
+| K1 Kiểm tích hợp giữa kỳ | 19/11 | I-1, I-2, I-3 đã thử (tùy chọn, không chặn) |
+| Bản nháp báo cáo | 20/11 | Team A, B, C có bản nháp trong `docs/report/` |
+| K2 Tích hợp đầy đủ | 23/11 | Mọi story mức B đã vào `main` hoặc có quyết định cắt; I-4 đến I-7 đã thử |
+| Đóng băng mã | 24/11 | Chỉ còn sửa lỗi; tổng duyệt demo lần 1; bản cuối phần báo cáo của từng team |
+| Hợp nhất báo cáo | 25/11 | PDF theo `docs/runbook/release-checklist.md`; tổng duyệt lần 2 |
+| Nộp | 26/11 | Báo cáo PDF có URL GitHub trên LMS, thẻ `m2-submission` |
 
 ## 4. Backlog theo team
 
-**Mức:** `B` = Bắt buộc cho M2 (đề bài hoặc ADR yêu cầu), `N` = Nên có, `T` = Tùy thời gian. **Cỡ:** S ≤ 0,5 ngày, M ≈ 1 đến 2 ngày, L ≈ 3 ngày trở lên (tính cho một người). **Phụ thuộc** là ID story phải xong trước.
+**Mức:** `B` = Bắt buộc, `N` = Nên có, `T` = Tùy thời gian, `Cắt` = không làm trong đợt này. **Cỡ:** S ≤ 0,5 ngày, M ≈ 1 đến 2 ngày, L ≈ 3 ngày (một người). Cột **Trạng thái** tính ngày 16/11. Không story nào phụ thuộc mã chưa xong của team khác; story trong cùng team có thể nối tiếp nhau.
 
 ### Team A: Gate Station
 
-| ID | Story | Mức | Cỡ | Phụ thuộc | Tiêu chí hoàn thành |
+| ID | Story | Mức | Cỡ | Trạng thái | Tiêu chí hoàn thành |
 | --- | --- | --- | --- | --- | --- |
-| A-01 | Chạy `RedisTokenReservation` và `RedisAntiPassbackStore` với Redis thật; thêm test tích hợp Testcontainers (thẻ `integration`) | B | M | D-01 | Test: hai luồng cùng `reserve` một `jti` chỉ một bên thắng; pending slot chặn quét song song; khởi động lại Redis vẫn giữ `USED` (AOF bật) |
-| A-02 | **Đồng bộ anti-passback sau nhập offline:** sau `ingestOffline` thành công, cập nhật `last` của nhân viên ở `IAntiPassbackStore` (hiện chưa làm, xem `docs/architecture/implementation-notes.md` mục 3) | B | M | none | Test: quét offline `ENTRY` rồi flush, sau đó quét online `ENTRY` ở cổng một chiều bị `ANTI_PASSBACK_VIOLATION` |
-| A-03 | Dựng lại `last` từ Attendance khi cache lạnh (Redis mất) để không bị lách anti-passback | B | M | B-05, A-01 | Test: xóa key Redis, quét lần hai cùng chiều vẫn bị từ chối |
-| A-04 | Gate Store bằng PostgreSQL + Flyway thay `InMemoryGateConfigRepository` (FR-11 đến FR-13, FR-16); API quản trị cổng cho `SYSTEM_ADMIN` | B | L | D-01 | CRUD cổng có Rbac, mọi thay đổi ghi audit; bảo trì cổng đổi `acceptsScans` ngay |
-| A-05 | `HttpTurnstileAdapter`: thêm test hợp đồng với `turnstile-simulator` thật (không chỉ JDK HttpServer); đo độ trễ | N | S | none | Test chạy chống simulator, ngân sách 800 ms được kiểm |
-| A-06 | Phản hồi `replay` trả luôn `direction` (hiện `null`, xem implementation-notes mục 5) | N | S | B-04 | Retry nhận lại đủ chiều như lần đầu |
-| A-07 | Cảnh báo anti-passback và mất tín hiệu kiosk cho Guard Console (FR-14, FR-15, FR-18) qua SSE; ngưỡng `offline > 60 s` (AC-11) | N | L | D-04 | Guard thấy cảnh báo trong 5 giây |
-| A-08 | Callback `onPhysicalPassCompleted` từ turnstile (tùy phần cứng) để xác nhận người đã qua cổng | T | M | A-05 | Có thể bật bằng cấu hình, không bật thì hành vi cũ |
-| A-09 | Kiểm thử tải 800 lượt/30 phút (NFR-06): p95 ≤ 1,0 s, p99 ≤ 2,0 s với `SimulatedTurnstileAdapter` | B | M | M-2 | Báo cáo đo kèm lệnh chạy lại, đính kèm báo cáo cuối |
+| A-01 | Adapter Redis với Redis thật (Testcontainers) | B | M | Phần lớn xong (`RedisAdaptersIT` 5 test); còn khởi động lại với AOF, A2 17/11 | Một `jti` chỉ một bên giữ được; pending chặn quét song song; `USED` còn sau khi Redis khởi động lại |
+| A-02 | Đồng bộ anti-passback sau nhập offline | B | M | A2, 18 đến 19/11 | Quét offline `ENTRY`, gửi lô, quét online `ENTRY` ở cổng một chiều bị `ANTI_PASSBACK_VIOLATION` |
+| A-03 | Dựng lại `last` từ attendance khi Redis mất dữ liệu | B | M | A2, 16/11 (`lastDirection` đã có) | Xóa trạng thái, quét lần hai cùng chiều vẫn bị từ chối |
+| A-04 | Kho cấu hình cổng trên `gate_store` (`JdbcGateConfigRepository`), API quản trị cho `SYSTEM_ADMIN` | B | L | A1, 16 đến 18/11 (database `gate_store` đã có, ADR-14) | CRUD cổng có Rbac; bảo trì cổng có hiệu lực ngay |
+| A-05 | Test hợp đồng `HttpTurnstileAdapter` với `turnstile-simulator` thật | N | S | A2, 20/11 | 5 chế độ lỗi, ngân sách 800 ms |
+| A-06 | `replay` trả `direction` (`AttemptState.direction`) | N | S | A2, 17/11 | Gửi lại nhận đủ chiều như lần đầu |
+| A-07 | Cảnh báo anti-passback và mất tín hiệu kiosk cho bảo vệ | Cắt | L | | |
+| A-08 | Callback `onPhysicalPassCompleted` từ turnstile | Cắt | M | | |
+| A-09 | Kiểm thử tải 800 lượt/30 phút (NFR-06) | B | M | A2 chuẩn bị 20/11, A1 và A2 đo 23/11 | Bảng p50, p95, p99, tỷ lệ lỗi, điều kiện đo, lệnh chạy lại |
+| A-10 | Danh bạ nhân viên từ gói đồng bộ | N | M | **Xong** (`SyncEmployeeDirectoryUseCase`, `EmployeeSyncTest`) | Vô hiệu hóa ở user-qr thì cổng từ chối sau một chu kỳ |
+| A-11 | `PrincipalResolver` (JWT) ở `SecurityController` và API quản trị cổng | B | S | A1, 20/11 | Bearer hợp lệ được; token hết hạn hoặc khóa lạ 401 |
+| A-12 | Audit cổng qua `JdbcOutboxStore` và `AuditOutbox` trên `gate_store` | B | M | A1, 19/11 | Mở thủ công ghi dòng outbox cùng transaction; relay phát `gate-station.AuditRecorded` |
 
 ### Team B: Attendance
 
-| ID | Story | Mức | Cỡ | Phụ thuộc | Tiêu chí hoàn thành |
+| ID | Story | Mức | Cỡ | Trạng thái | Tiêu chí hoàn thành |
 | --- | --- | --- | --- | --- | --- |
-| B-01 | Chạy migration Flyway và `PersistenceAndBrokerIT` với Docker; sửa lỗi nếu có | B | M | D-01 | `./gradlew :services:attendance:integrationTest` xanh |
-| B-02 | Thêm test tích hợp AMQP: Outbox publisher thật đẩy lên RabbitMQ, ngắt broker, bật lại, không mất sự kiện (ADR-11 test 4 trên hạ tầng thật) | B | M | B-01 | Test xanh, sự kiện đủ và đúng thứ tự |
-| B-03 | Ghi nhận offline: chuyển các `anomaly` thành hàng đợi xử lý của HR (UC-09) và sự kiện `AuditRecorded` đã có; thêm truy vấn `IAttendanceQuery.anomalies` | B | M | none | HR liệt kê được bản ghi bất thường chờ xử lý |
-| B-04 | Mở rộng `IAttendanceQuery`: trả `direction` và `employeeUuid` trong `AttemptView` (phục vụ A-06) | N | S | none | Hợp đồng cập nhật trong `docs/api` |
-| B-05 | `IAttendanceQuery.lastDirection(employee)` để Gate Station dựng lại anti-passback (phục vụ A-03) | B | S | none | Test dùng bảng `attendance_transactions` |
-| B-06 | `AttendanceCorrected`: hiệu chỉnh có kiểm soát bởi HR (FR-26), giữ liên hệ với giao dịch gốc, tăng `aggregateVersion` | B | L | B-03 | Test: hiệu chỉnh phát sự kiện mới; Reporting và HR nhận được |
-| B-07 | Xác minh lượt mở thủ công (`MANUAL`) bởi HR để trở thành công hợp lệ (FR-20, UC-06 bước cuối) | N | M | B-06 | Lượt thủ công đã xác minh sinh `AttendanceConfirmed` |
-| B-08 | Chỉ số vận hành: tồn đọng outbox > 5 phút, số lượt `GATE_UNKNOWN` (AC-11) qua Micrometer | N | S | none | Metric xuất hiện ở `/actuator` |
-| B-09 | Thêm `RecoveryPolicy` cấu hình được qua bảng tham số quản trị (FR-32) | T | S | none | Đổi tham số không cần build lại |
+| B-01 | Flyway và repository JDBC với PostgreSQL thật | B | M | Phần lớn xong (`PersistenceAndBrokerIT` 8 test); còn test rollback, B2 16/11 | Use case lỗi giữa chừng thì không còn lượt quét lẫn dòng outbox |
+| B-02 | Outbox với RabbitMQ thật, dừng và bật lại broker | B | M | Phát lên `tmc.events` đã chạy; còn test dừng/bật broker, B2 16 đến 17/11 | Không mất, đúng thứ tự, không phát lại dòng đã `PUBLISHED` |
+| B-03 | Hàng đợi bất thường cho HR (UC-09), `IAttendanceQuery.anomalies` | B | M | B2, 18 đến 19/11 | HR lọc theo nhà máy và thời gian; vai khác 403 |
+| B-04 | `direction`, `employeeUuid` trong `AttemptView` | N | S | **Xong** | |
+| B-05 | `lastDirection` cho gate-station | B | S | **Xong** | |
+| B-06 | Hiệu chỉnh chấm công (FR-26): use case, endpoint HR | B | L | B1, 16 đến 18/11 (lược đồ, bảng, repository, factory đã có) | Bản mới liên kết bản gốc, `AttendanceCorrected` và `AuditRecorded` cùng transaction, lũy đẳng, chỉ `HR_STAFF` |
+| B-07 | Xác minh lượt mở thủ công bởi HR (FR-20) | N | M | B1, 19 đến 20/11 | Lượt đã xác minh sinh `AttendanceConfirmed` |
+| B-08 | Chỉ số vận hành: outbox tồn > 5 phút, số `GATE_UNKNOWN` | N | S | B2, 20/11 | Chỉ số ở `/actuator` |
+| B-09 | `RecoveryPolicy` cấu hình qua bảng tham số | Cắt | S | | |
+| B-10 | `JdbcProcessedMessageStore` trong `platform/messaging` | N | M | **Xong** (`MessagingInfraIT`) | |
 
 ### Team C: User/QR và Identity
 
-| ID | Story | Mức | Cỡ | Phụ thuộc | Tiêu chí hoàn thành |
+| ID | Story | Mức | Cỡ | Trạng thái | Tiêu chí hoàn thành |
 | --- | --- | --- | --- | --- | --- |
-| C-01 | Chạy Flyway và `JdbcDeviceKeyRegistry` với Docker; thêm test tích hợp, kể cả ràng buộc "một thiết bị ACTIVE mỗi nhân viên" ở mức DB | B | M | D-01 | Đăng ký hai thiết bị song song: một bên bị từ chối bởi chỉ mục duy nhất |
-| C-02 | **Gói đồng bộ có nhân viên đủ quyền** (`IEmployeeDirectory` của Gate Station hiện chỉ đọc từ cấu hình): thêm `employees` (uuid, active, factories) vào `ISyncBundle` và `IKioskSyncSource` | B | L | none | Gate Station dùng dữ liệu đồng bộ thay vì seed trong yml |
-| C-03 | Hồ sơ nhân viên và vòng đời (FR-01 đến FR-04, FR-07, FR-09, FR-10), đồng bộ từ HR (FR-08); vô hiệu hóa nhân viên thì thu hồi thiết bị | B | L | C-01 | UC-01, UC-02, UC-03 chạy được; thao tác ghi audit |
-| C-04 | Identity: cấp JWT ES256 (Nimbus), `/.well-known/jwks.json`, hết hạn phiên 15 phút (NFR-03) | B | L | none | Test: token hết hạn bị từ chối; JWKS xoay khóa được |
-| C-05 | TOTP thật cho MFA (HR Staff, System Admin), thay `IMfaVerifier` luôn từ chối | B | M | C-04 | Test mã đúng, sai, lệch thời gian |
-| C-06 | Thay `PrincipalHeaders` bằng xác thực JWT trực tiếp ở các service (hoặc cấu hình gateway chèn header đã ký) | B | M | C-04 | Gọi không có token bị 401; header giả bị bỏ qua |
-| C-07 | Quản lý tài khoản và phân quyền (FR-31, UC-12): thay đổi vai trò kết thúc phiên đang mở | N | L | C-04 | Test phiên bị thu hồi ngay |
-| C-08 | Chuyển audit của user-qr và identity qua outbox sang audit-admin (thay `LoggingAuditLog`) | B | M | B-02 | Audit đến được audit-admin, không mất khi broker tắt |
-| C-09 | `device-simulator`: thêm lệnh `revoke` và `rotate` để demo thu hồi | T | S | none | Dùng được trong kịch bản demo |
-| C-10 | Tài liệu bảo mật: mô hình đe dọa QR (STRIDE ngắn), `privacy-notes.md`, mã hóa lưu trữ | B | M | none | Phần "QR tĩnh" của báo cáo có bảng mối đe dọa và biện pháp |
+| C-01 | `JdbcDeviceKeyRegistry` với PostgreSQL thật | B | M | Phần lớn xong (`UserQrPersistenceIT`); còn đăng ký song song và 409, C2 16/11 | Hai lệnh song song: đúng một bên thắng, bên kia 409 |
+| C-02 | Nguồn HR cho danh bạ nhân viên trong gói đồng bộ (thay `InMemoryEmployeeDirectory`) | B | L | Hợp đồng và bản bộ nhớ đã có; C2 16 đến 18/11 | Đổi trạng thái thì lần đồng bộ sau trả `INACTIVE`, thiết bị bị thu hồi |
+| C-03 | Hồ sơ và vòng đời nhân viên đầy đủ | Cắt | L | | |
+| C-04 | Identity cấp JWT ES256, JWKS | B | L | **Xong** | |
+| C-05 | TOTP cho MFA | B | M | C2, 19/11 | Mã đúng, sai, lệch một bước; không dùng lại |
+| C-06 | Xác thực JWT ở service | B | M | **Xong cho user-qr** và `platform/security`; service khác tự gắn (A-11, B-06, D-13) | Token sai 401; header giả bị bỏ qua ở profile mặc định |
+| C-07 | Quản lý tài khoản, đổi vai kết thúc phiên | Cắt | L | | |
+| C-08 | Audit của user-qr và identity qua `AuditOutbox` | B | M | Bean `AuditOutbox` đã có; C1 16 đến 17/11 | Đăng ký, thu hồi, đăng nhập thành sự kiện; không mất khi broker tắt |
+| C-09 | `device-simulator`: lệnh `revoke`, `rotate` | Cắt | S | | |
+| C-10 | Mô hình đe dọa QR, `privacy-notes.md` | B | M | C2, 20/11 | Mỗi mối đe dọa trỏ tới một test |
+| C-11 | Database cho identity, outbox bền | N | M | C1, 18 đến 19/11 (database `identity` đã có trong `docker/init/central`) | Dòng outbox còn sau khi khởi động lại và được phát |
+| C-12 | Xoay khóa ký JWT | N | S | C1, 20/11 | Token ký bằng khóa cũ còn hạn vẫn hợp lệ sau khi đổi khóa |
 
 ### Team D: Kiosk, Portal và Central
 
-| ID | Story | Mức | Cỡ | Phụ thuộc | Tiêu chí hoàn thành |
+| ID | Story | Mức | Cỡ | Trạng thái | Tiêu chí hoàn thành |
 | --- | --- | --- | --- | --- | --- |
-| D-01 | **Kiểm chứng hạ tầng Docker đầu tiên:** `make up`, `make integration`, chạy 3 demo với PostgreSQL, Redis, RabbitMQ; ghi lỗi vào issue cho team chủ sở hữu | B | M | none | Danh sách lỗi tồn tại hoặc xác nhận "xanh" trong `docs/runbook/troubleshooting.md` |
-| D-02 | CI GitHub Actions: build, test, ArchUnit, spotless, portal; job tích hợp riêng (Testcontainers) | B | M | none | PR đầu tiên chạy xanh; nhánh `main` bảo vệ theo `CONTRIBUTING.md` |
-| D-03 | Consumer thật: `JdbcProcessedMessageStore` (bảng `processed_messages`, cùng transaction với read model), DLQ và chính sách retry cho reporting, hr-integration, audit-admin | B | L | B-02 | Gửi trùng thông điệp không nhân đôi kết quả; thông điệp lỗi vào DLQ |
-| D-04 | Reporting: lọc theo nhóm/ca (cần `group` trong sự kiện, phối hợp B), báo cáo chuyên cần, xuất file (FR-24, FR-28), dashboard (FR-25) | B | L | B-06 | UC-10 các luồng chính chạy; Supervisor chỉ thấy nhóm của mình |
-| D-05 | Reporting: quy tắc gian lận R4 (`ImpossibleTravelRule`, `RepeatedDenialRule`) và cảnh báo (ADR-12 test 8) | B | M | D-03 | Test: BD rồi LA cách 10 phút sinh cảnh báo và cờ bất thường |
-| D-06 | HR Integration: `HttpHrPayrollAdapter` theo hợp đồng mục 16.4 đã sửa, tra cứu kết quả trước khi gửi lại `UNKNOWN`, scheduler retry có backoff | B | L | D-03 | Test với HR giả: timeout rồi tra cứu rồi không gửi trùng |
-| D-07 | HR Integration: đối soát kỳ, lô chốt, cảnh báo 08:00 và 12:00 ngày 1 (NFR-08, UC-09) | B | L | D-06 | Test dùng đồng hồ giả; dữ liệu đủ trước hạn |
-| D-08 | Audit: lưu trữ PostgreSQL chỉ INSERT (role không có UPDATE/DELETE), chuỗi băm, truy vấn ≤ 5 giây, lưu 12 tháng (NFR-02) | B | M | C-08 | Test quyền DB và phát hiện sửa dữ liệu |
-| D-09 | `kiosk-simulator`: kịch bản sự cố P1 đến P5 tự động (không chỉ P6) dùng edge giả có chèn lỗi, ghi vào báo cáo | N | M | none | Bảng "điểm đứt → kết quả" kèm lệnh chạy |
-| D-10 | `web-portal`: đăng nhập thật qua identity, Guard Console có cảnh báo trực tiếp, trang đối soát đầy đủ | N | L | C-04, A-07 | Hết thanh DEV, dùng JWT |
-| D-11 | Hạ tầng triển khai: Dockerfile cho từng service và profile `apps` trong compose; tài liệu mTLS giữa kiosk và Edge Gateway | T | L | D-01 | `docker compose --profile apps up` chạy cả stack |
-| D-12 | **Tích hợp báo cáo:** cập nhật `docs/document.md` theo `docs/adr/README.md` mục 3, thêm mục "Issues Encountered", phản ánh, mục Task 2 | B | L | mọi team nộp phần của mình | Báo cáo PDF hoàn chỉnh theo `release-checklist.md` |
+| D-01 | Kiểm chứng hạ tầng Docker | B | M | **Xong** (`docs/runbook/troubleshooting.md`, "Kết quả D-01") | |
+| D-02 | CI và bảo vệ nhánh | B | M | 5 job đã có; còn CODEOWNERS, bảo vệ nhánh, 5 check bắt buộc, D1 19/11 | PR đỏ không hợp nhất được; đẩy thẳng lên `main` bị từ chối |
+| D-03 | Consumer thật, DLQ, retry, dedup JDBC | B | L | Phần lớn xong (3 IT listener); còn cảnh báo DLQ (N), D1 19/11 | Thông điệp lỗi vào DLQ và có cảnh báo |
+| D-04 | Reporting: read model JDBC chung transaction với dedup, áp hiệu chỉnh | B | M | Áp hiệu chỉnh đã có; D2 17 đến 18/11. Báo cáo theo nhóm, ca, xuất file: cắt | Hiện diện còn sau khởi động lại; lỗi thì không ghi gì |
+| D-05 | Quy tắc gian lận R4 | B | M | D2, 16/11 | BD rồi LA cách 10 phút sinh cảnh báo |
+| D-06 | `HttpHrPayrollAdapter`, tra cứu trước khi gửi lại, xử lý `AttendanceCorrected` | B | M | D1, 16 đến 17/11. Scheduler backoff: cắt | HR không trả lời thì tra cứu trước, không gửi trùng |
+| D-07 | Cảnh báo hạn chót 08:00 và 12:00 ngày 1 | B | M | D1, 18/11. Đối soát kỳ, lô chốt: cắt | Test với đồng hồ giả |
+| D-08 | Kho audit PostgreSQL chỉ INSERT, chuỗi băm | B | M | D2, 18 đến 19/11. Truy vấn 5 giây, lưu 12 tháng: cắt | Sửa dữ liệu bị phát hiện; role không có UPDATE, DELETE |
+| D-09 | Kịch bản sự cố P1 đến P5 tự động | Cắt | M | | |
+| D-10 | Portal đăng nhập qua màn hình riêng, Guard Console cảnh báo trực tiếp | Cắt | L | Phần gửi Bearer chuyển sang D-13 | |
+| D-11 | Dockerfile từng service, profile `apps` | Cắt | L | | |
+| D-12 | Hợp nhất báo cáo và nộp | B | L | D1, 23 đến 25/11; nộp 26/11 | PDF theo `release-checklist.md` |
+| D-13 | Portal và app nhân viên gửi Bearer; `PrincipalResolver` ở reporting, hr-integration, audit-admin | N | M | D2, 20 đến 23/11 | Bearer được gửi, 401 về đăng nhập; service trung tâm nhận Bearer |
+| D-14 | Test `kiosk-simulator` trên Windows (đóng `Journal` sau mỗi test) | N | S | D2, 23/11 | Xanh trên Windows |
+| D-15 | Kiosk dùng `employees` của gói đồng bộ khi offline | N | M | D1, 20/11 | Offline: nhân viên `INACTIVE` hoặc sai nhà máy bị từ chối |
+| D-16 | Thử trang `/kiosk` bằng webcam và điện thoại thật | T | S | D2, 24/11 trong tổng duyệt | Kết quả ghi vào runbook |
 
-## 5. Hợp đồng giữa các team (phải thống nhất trước khi code song song)
+**Về mã D-13:** trước đây D-13 được dùng cho hai việc ("app nhân viên dùng JWT" trong kế hoạch, "quét bằng webcam" trong bảng hiện trạng). Từ 16/11, **D-13 chỉ là việc gửi Bearer**; thử webcam là **D-16**.
+
+Báo cáo của từng team (không phải story mã): **R-A**, **R-B**, **R-C** (nháp 20/11, bản cuối 24/11); phần của Team D nằm trong D-12.
+
+## 5. Hợp đồng giữa các team
 
 | Hợp đồng | Bên cung cấp | Bên dùng | Nơi định nghĩa | Ai duyệt khi đổi |
 | --- | --- | --- | --- | --- |
-| `IAttendanceCommand`, `IAttendanceQuery`, `IOfflineAttendanceIngest` (REST `/internal/v1/**`) | B | A | `docs/api/internal-attendance.openapi.yaml` | A và B |
-| `AttendanceEvents` (AMQP) | B | D | `docs/api/attendance-events.asyncapi.yaml` | B và D |
-| `IQRValidation` (`/internal/v1/qr/verify`), sync bundle (`/internal/v1/sync-bundle`) | C | A, D | `docs/api/user-qr.openapi.yaml` | A và C |
-| Kiosk API (`/kiosk/v1/**`) | A | D (kiosk-simulator) | `docs/api/kiosk-edge.openapi.yaml` | A và D |
+| `IAttendanceCommand`, `IAttendanceQuery`, `IOfflineAttendanceIngest` (REST `/internal/v1/**`, kể cả last-direction) | B | A | `docs/api/internal-attendance.openapi.yaml` | A và B |
+| Sự kiện trên exchange `tmc.events` (`attendance.*`, `*.AuditRecorded`, `AttendanceCorrected`) | B, C, A | D | `docs/api/attendance-events.asyncapi.yaml`, ADR-15 | Bên phát và D |
+| `IQRValidation` (`/internal/v1/qr/verify`), sync bundle (`/internal/v1/sync-bundle`, có `employees`) | C | A, D | `docs/api/user-qr.openapi.yaml` | A và C |
+| Kiosk API (`/kiosk/v1/**`) | A | D (kiosk-simulator, trang `/kiosk`) | `docs/api/kiosk-edge.openapi.yaml` | A và D |
 | `ITurnstileControlPort` và API turnstile | A | A | `docs/api/turnstile.openapi.yaml` | A |
 | Quan sát cổng (`/internal/v1/attempts/{id}/gate-observation`) | A | B | `docs/api/kiosk-edge.openapi.yaml` (mục internal) | A và B |
-| Header danh tính (`X-Subject`, `X-Roles`, `X-Scope-*`) | C (sau này JWT) | tất cả | `docs/conventions/api-design-guidelines.md` | C |
+| JWT, JWKS, `PrincipalResolver`; header dev chỉ ở `local`, `inmem` | C | tất cả | `docs/api/identity.openapi.yaml`, `docs/conventions/api-design-guidelines.md` | C và bên dùng |
+| Fixture dùng chung | C (seed, chính sách token) | A, C, D | `docs/api/fixtures/employee-seed.json`, `qr-token-policy.json` | Bốn lead |
 
 **Quy tắc:** hợp đồng đổi thì sửa tệp `docs/api` **trong cùng PR** với mã, và thêm reviewer của bên dùng. Đổi không tương thích phải có ADR.
 
-## 6. Đồ thị phụ thuộc chính (đường găng)
+## 6. Phụ thuộc
 
-```mermaid
-flowchart LR
-  D01["D-01 Kiểm chứng Docker"] --> A01["A-01 Redis thật"]
-  D01 --> B01["B-01 JDBC thật"]
-  D01 --> C01["C-01 Registry JDBC"]
-  B01 --> B02["B-02 AMQP thật"]
-  B02 --> D03["D-03 Consumer thật"]
-  B02 --> C08["C-08 Audit qua outbox"]
-  D03 --> D06["D-06 HR adapter"]
-  D06 --> D07["D-07 Đối soát kỳ"]
-  B05["B-05 lastDirection"] --> A03["A-03 Dựng lại anti-passback"]
-  C04["C-04 JWT"] --> C06["C-06 Xác thực service"]
-  C04 --> D10["D-10 Portal đăng nhập"]
-  B06["B-06 Hiệu chỉnh"] --> D04["D-04 Reporting"]
-```
+Không còn phụ thuộc chặn giữa các team (bước gỡ phụ thuộc đã làm xong mọi phần mà nhiều team cùng cần). Chỗ cần mã thật của nhau là 7 lần kiểm tích hợp tùy chọn I-1 đến I-7 ở [`01-ke-hoach.md`](../handover/01-ke-hoach.md) mục 4. Đồ thị đường găng cũ (D-01 → B-01 → B-02 → D-03) đã bỏ vì các story đó đã xong.
 
-**Việc chặn nhiều team nhất:** D-01 (tuần 1) và B-02 (tuần 2). Hai việc này phải xong sớm; nếu trễ, báo ngay trong họp.
+## 7. Kế hoạch theo ngày
 
-## 7. Kế hoạch từng tuần
-
-| Tuần | Mục tiêu | A | B | C | D |
-| --- | --- | --- | --- | --- | --- |
-| **W1** | Chạy được, đóng băng hợp đồng | A-05, rà OpenAPI | B-04, B-05, rà OpenAPI | C-10, C-04 bắt đầu | **D-01**, D-02, rà AsyncAPI |
-| **W2** | Hạ tầng thật | A-01, A-04 bắt đầu | B-01, **B-02**, B-03 | C-01, C-04, C-02 bắt đầu | D-03, D-09 |
-| **W3** | Tính năng đủ | A-02, A-03, A-04, A-09 | B-06, B-08 | C-02, C-03, C-05, C-06, C-08 | D-04, D-05, D-06, D-07, D-08 |
-| **W4** | Đóng băng, báo cáo | A-06, A-07 nếu kịp | B-07 nếu kịp | C-07 nếu kịp | **D-12**, D-10 nếu kịp, mọi team nộp phần báo cáo |
-
-Việc mức `N` và `T` bị cắt đầu tiên khi trễ. Quyết định cắt do lead các team họp và ghi vào `MEETING-CADENCE.md` mục "Nhật ký quyết định".
+Lịch W1 đến W4 cũ đã bỏ. Lịch hiện hành: [`docs/handover/01-ke-hoach.md`](../handover/01-ke-hoach.md) mục 3 và [`docs/handover/03-gantt.md`](../handover/03-gantt.md). Việc mức `T` rồi `N` bị cắt trước khi trễ, theo thứ tự ở `01-ke-hoach.md` mục 6.3; quyết định ghi vào `MEETING-CADENCE.md`, mục "Nhật ký quyết định".
 
 ## 8. Phân công viết báo cáo
 
-Báo cáo nộp là **tài liệu M1 đã sửa + phần M2**. Mỗi team viết phần của mình bằng Markdown trong `docs/report/` (thư mục do Team D tạo ở D-12), Team D hợp nhất.
+Báo cáo nộp là **tài liệu M1 đã sửa + phần M2**. Mỗi team viết phần của mình bằng Markdown trong `docs/report/`, Team D hợp nhất (D-12).
 
-| Phần | Nội dung | Team viết | Hạn nộp bản nháp |
+| Phần | Nội dung | Team viết | Hạn |
 | --- | --- | --- | --- |
-| Issues Encountered: mất kết nối | Vấn đề, 7 điểm đứt, cơ chế (ADR-11), cách giảm thiểu, vị trí trong từng view, đánh đổi, bằng chứng (test và demo) | B (viết), A và D (bổ sung bằng chứng) | W3 giữa |
-| Issues Encountered: QR tĩnh | Mối đe dọa, QR động ký bằng khóa thiết bị (ADR-12), chống replay nhiều lớp, đánh đổi | C (viết), A và D (bằng chứng) | W3 giữa |
-| Cập nhật yêu cầu, use case, đặc tính | NFR-05, NFR-09, UC-07, UC-08, AC-03, AC-04 theo `docs/adr/README.md` mục 3 | C (NFR-05, UC-07), B (NFR-09, UC-08) | W3 giữa |
-| Component, sequence, deployment | Sơ đồ mới hoặc đã sửa (Kiosk Journal, Replay Cache, Device Key Registry, thành phần điều phối) | A (quét QR, 15.2), B (outbox), C (bảo mật), D (HR) | W3 cuối |
-| Áp dụng SOLID | Mỗi nguyên tắc gắn với lớp thật trong mã (dùng `docs/architecture/solid-map.md`) | Cả bốn, mỗi team phần mã của mình | W3 cuối |
-| Phản ánh (Reflection) | Mỗi team một đoạn: SOLID giúp gì, khó khăn gì, bằng chứng từ mã | Cả bốn, D hợp nhất | W4 đầu |
-| Task 2: hiện thực | Module đã chọn (Attendance Event Recording tại biên), cách chạy, ảnh kết quả test và demo, URL GitHub | D | W4 giữa |
-| Hợp nhất, ma trận truy vết, định dạng | Một giọng văn, đánh số hình, danh mục hình, tài liệu tham khảo | D | W4 giữa |
+| Issues Encountered: mất kết nối | Vấn đề, 7 điểm đứt, cơ chế (ADR-11), giảm thiểu, vị trí trong từng view, đánh đổi, bằng chứng | B (viết), A và D (bằng chứng) | Nháp 20/11, cuối 24/11 |
+| Issues Encountered: QR tĩnh | Mối đe dọa, QR động ký bằng khóa thiết bị (ADR-12), chống replay nhiều lớp, đánh đổi | C (viết), A và D (bằng chứng) | Nháp 20/11, cuối 24/11 |
+| Cập nhật yêu cầu, use case, đặc tính | NFR-05, NFR-09, UC-07, UC-08, AC-03, AC-04 theo `docs/adr/README.md` mục 3 | C (NFR-05, UC-07), B (NFR-09, UC-08) | Nháp 20/11, cuối 24/11 |
+| Component, sequence, deployment | Sơ đồ mới hoặc đã sửa | A (quét QR, 15.2), B (outbox), C (bảo mật), D (HR) | Cuối 24/11 |
+| Áp dụng SOLID | Mỗi nguyên tắc gắn với lớp thật (`docs/architecture/solid-map.md`) | Cả bốn | Cuối 24/11 |
+| Phản ánh | Mỗi team một đoạn | Cả bốn, D hợp nhất | Cuối 24/11 |
+| Task 2: hiện thực | Module đã chọn, cách chạy, ảnh kết quả test và demo, URL GitHub | D | 25/11 |
+| Hợp nhất, ma trận truy vết, định dạng | Một giọng văn, đánh số hình, tài liệu tham khảo | D | 25/11 |
 
 Quy tắc viết: **mọi khẳng định về hành vi phải trỏ tới một test hoặc một kịch bản demo** (tên lớp test hoặc `make demo-*`). Không viết điều mà mã chưa làm; việc chưa làm ghi vào mục "Hạn chế và việc tiếp theo".
 
 ## 9. Định nghĩa "xong" cho một story
 
 1. Mã theo `docs/conventions/coding-standards.md`, `./gradlew spotlessCheck` sạch.
-2. Có test theo `docs/conventions/testing-strategy.md`; test mới viết **trước hoặc cùng lúc** với mã, không bỏ sau.
-3. `ArchitectureTest` của service vẫn xanh (không phá quy tắc phụ thuộc).
+2. Có test theo `docs/conventions/testing-strategy.md`; test mới viết **trước hoặc cùng lúc** với mã.
+3. `ArchitectureTest` của service vẫn xanh; story có test tích hợp thì `integrationTest` của module xanh.
 4. Hợp đồng đổi thì `docs/api` đổi trong cùng PR.
 5. Quyết định kiến trúc mới thì có ADR (`docs/adr/ADR-template.md`).
 6. PR được duyệt đủ người theo checklist, CI xanh.
-7. Tiêu chí hoàn thành của story ở bảng trên được chứng minh trong mô tả PR (lệnh đã chạy hoặc ảnh chụp).
+7. Tiêu chí hoàn thành được chứng minh trong mô tả PR (lệnh đã chạy hoặc ảnh chụp). Không cần kiểm tích hợp với team khác để tính là xong.
