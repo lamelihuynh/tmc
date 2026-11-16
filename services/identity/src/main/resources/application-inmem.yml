@@ -1,1 +1,5 @@
-# identity has no infrastructure dependencies yet, so the inmem profile needs no exclusions
+# Profile "inmem": no broker (tests).
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration

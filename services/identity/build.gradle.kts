@@ -7,8 +7,10 @@ plugins {
 dependencies {
     implementation(project(":platform:common-kernel"))
     implementation(project(":platform:security"))
+    implementation(project(":platform:messaging"))
 
     implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-amqp")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation(libs.nimbus.jose.jwt)
 

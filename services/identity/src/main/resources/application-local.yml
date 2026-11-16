@@ -1,0 +1,5 @@
+# Profile "local": Docker-free, no broker; audit events stay in process memory.
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration

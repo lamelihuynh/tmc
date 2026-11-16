@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import vn.tmc.identity.bootstrap.IdentityApplication;
 import vn.tmc.platform.kernel.IClock;
@@ -23,6 +24,7 @@ import vn.tmc.platform.security.jwt.JwtPrincipalVerifier;
  * The HTTP contract of docs/api/identity.openapi.yaml: login answer, then JWKS checks the token.
  */
 @SpringBootTest(classes = IdentityApplication.class)
+@ActiveProfiles("inmem")
 @AutoConfigureMockMvc
 class LoginApiTest {
   @Autowired MockMvc mvc;
