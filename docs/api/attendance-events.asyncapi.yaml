@@ -12,7 +12,13 @@ info:
     Phát **ít nhất một lần**, không đảm bảo thứ tự tuyệt đối. Consumer PHẢI khử trùng theo `(consumer, messageId)`
     và PHẢI bỏ qua `aggregateVersion` cũ hơn trạng thái hiện có. Chỉ ACK sau khi lưu bền vững kết quả xử lý.
     `payload` chỉ chứa dữ liệu tối thiểu: UUID nội bộ, KHÔNG token, KHÔNG `jti`, KHÔNG tên (ADR-09).
-    Nguồn mã: `AttendanceEventFactory`, `AmqpEventPublisher`, `platform/common-kernel/EventEnvelope`.
+    Nguồn mã: `AttendanceEventFactory`, `platform/messaging` (`TmcExchange`, `amqp/AmqpEnvelopePublisher`,
+    `outbox/OutboxStore` + `OutboxRelay`, `jdbc/JdbcOutboxStore`, `jdbc/JdbcProcessedMessageStore`, `AuditEvents`),
+    `platform/common-kernel/EventEnvelope`. Hàng đợi consumer: reporting `tmc.reporting.attendance`, hr-integration
+    `tmc.hr.attendance`, audit-admin `tmc.audit.events`; mỗi hàng đợi có DLQ `<tên>.dlq` (thử lại 3 lần rồi chuyển sang DLQ).
+    Thông điệp không có hàng đợi nào bind thì broker vẫn xác nhận và bỏ đi: consumer chưa triển khai không làm
+    tắc outbox của bên phát. Kiểm chứng với RabbitMQ thật: `MessagingInfraIT`, `AttendanceEventListenerIT`,
+    `HrAttendanceListenerIT`, `AuditEventListenerIT`.
 servers:
   local:
     url: localhost:5672

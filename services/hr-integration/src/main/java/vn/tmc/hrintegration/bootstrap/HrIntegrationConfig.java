@@ -2,6 +2,7 @@ package vn.tmc.hrintegration.bootstrap;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import vn.tmc.hrintegration.adapter.out.inmem.InMemorySyncLogRepository;
 import vn.tmc.hrintegration.adapter.out.inmem.SimulatedHrPayrollAdapter;
 import vn.tmc.hrintegration.application.port.in.ISyncMonitoring;
@@ -11,10 +12,10 @@ import vn.tmc.hrintegration.application.usecase.SyncAttendanceEventUseCase;
 import vn.tmc.hrintegration.application.usecase.SyncMonitoringService;
 import vn.tmc.platform.kernel.IClock;
 import vn.tmc.platform.messaging.IdempotentConsumer;
-import vn.tmc.platform.messaging.InMemoryProcessedMessageStore;
 import vn.tmc.platform.messaging.ProcessedMessageStore;
 
 @Configuration
+@Import(DedupStoreConfig.class)
 public class HrIntegrationConfig {
   @Bean
   IClock clock() {
@@ -33,19 +34,17 @@ public class HrIntegrationConfig {
   }
 
   @Bean
-  ProcessedMessageStore processedMessageStore() {
-    return new InMemoryProcessedMessageStore();
-  }
-
-  @Bean
   SyncAttendanceEventUseCase syncAttendanceEvent(
       ISyncLogRepository log, IHrPayrollPort hr, IClock clock) {
     return new SyncAttendanceEventUseCase(log, hr, clock);
   }
 
   @Bean
-  IdempotentConsumer hrConsumer(ProcessedMessageStore store, SyncAttendanceEventUseCase sync) {
-    return new IdempotentConsumer("hr-integration", store, sync::handle);
+  IdempotentConsumer hrConsumer(
+      ProcessedMessageStore store,
+      IdempotentConsumer.TransactionRunner tx,
+      SyncAttendanceEventUseCase sync) {
+    return new IdempotentConsumer("hr-integration", store, sync::handle, tx);
   }
 
   @Bean

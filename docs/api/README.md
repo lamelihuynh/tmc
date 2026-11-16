@@ -10,7 +10,7 @@ Nguồn sự thật cho giao tiếp giữa các thành phần. **Đổi hợp đ
 | [turnstile.openapi.yaml](turnstile.openapi.yaml) | API Turnstile hiện hữu (M1 mục 16.3) và quản trị của bản giả lập | Turnstile Control System | gate-station | Có với `turnstile-simulator`; **phần "trạng thái lệnh cuối" là giả định** về API thật, xem tệp |
 | [central.openapi.yaml](central.openapi.yaml) | Báo cáo hiện diện, đồng bộ HR, audit, đăng nhập | reporting, hr-integration, audit-admin, identity | Portal | Có, mức khung |
 | [hr-payroll.openapi.yaml](hr-payroll.openapi.yaml) | API HR/Payroll hiện hữu (M1 mục 16.4), **đã sửa header** | HR/Payroll | hr-integration | **Chưa hiện thực** (story D-06); thân yêu cầu cần đối chiếu M1 |
-| [attendance-events.asyncapi.yaml](attendance-events.asyncapi.yaml) | `AttendanceEvents` trên RabbitMQ | attendance | reporting, hr-integration, audit-admin | Có (`AttendanceEventFactory`, `AmqpEventPublisher`); AMQP thật chưa kiểm chứng |
+| [attendance-events.asyncapi.yaml](attendance-events.asyncapi.yaml) | `AttendanceEvents` trên RabbitMQ | attendance | reporting, hr-integration, audit-admin | Có (`AttendanceEventFactory`, `AmqpEnvelopePublisher`); đã kiểm chứng với RabbitMQ thật (`MessagingInfraIT` và IT của 3 consumer) |
 
 ## Cách kiểm tra cú pháp
 

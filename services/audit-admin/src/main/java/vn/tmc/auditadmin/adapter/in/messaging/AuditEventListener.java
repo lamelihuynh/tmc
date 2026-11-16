@@ -15,26 +15,41 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import vn.tmc.platform.kernel.EventEnvelope;
 import vn.tmc.platform.messaging.IdempotentConsumer;
+import vn.tmc.platform.messaging.TmcExchange;
 
-/** Own subscription for audit events. NOT exercised by automated tests (needs RabbitMQ). */
+/**
+ * Own subscription for AuditRecorded from every source (attendance, user-qr, identity,
+ * gate-station). Exchange {@code tmc.events}, routing keys {@code <source>.<EventType>} (ADR-15). A
+ * message that still fails after the listener retries goes to {@value #DLQ} instead of looping. Off
+ * on the inmem and local profiles (no broker). Verified against RabbitMQ by AuditEventListenerIT.
+ * TODO Team D: alerting on the DLQ.
+ */
 @Configuration
-@Profile("!inmem")
+@Profile("!inmem & !local")
 class AuditQueueConfig {
   static final String QUEUE = "tmc.audit.events";
+  static final String DLQ = QUEUE + ".dlq";
 
   @Bean
-  TopicExchange attendanceExchange() {
-    return new TopicExchange("tmc.attendance.events", true, false);
+  TopicExchange tmcEvents() {
+    return new TopicExchange(TmcExchange.NAME, true, false);
   }
 
   @Bean
-  Queue auditQueue() {
-    return QueueBuilder.durable(QUEUE).build();
+  Queue auditadminQueue() {
+    return QueueBuilder.durable(QUEUE).deadLetterExchange("").deadLetterRoutingKey(DLQ).build();
   }
 
   @Bean
-  Binding auditBinding(Queue auditQueue, TopicExchange attendanceExchange) {
-    return BindingBuilder.bind(auditQueue).to(attendanceExchange).with("attendance.AuditRecorded");
+  Queue auditadminDeadLetterQueue() {
+    return QueueBuilder.durable(DLQ).build();
+  }
+
+  @Bean
+  Binding auditBinding(Queue auditadminQueue, TopicExchange tmcEvents) {
+    return BindingBuilder.bind(auditadminQueue)
+        .to(tmcEvents)
+        .with(TmcExchange.anySource("AuditRecorded"));
   }
 
   @Bean
@@ -44,7 +59,7 @@ class AuditQueueConfig {
 }
 
 @Component
-@Profile("!inmem")
+@Profile("!inmem & !local")
 class AuditEventListener {
   private final IdempotentConsumer consumer;
 

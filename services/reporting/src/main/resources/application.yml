@@ -3,8 +3,22 @@ server:
 spring:
   application:
     name: reporting
+  datasource:
+    url: ${REPORTING_DB_URL:jdbc:postgresql://localhost:5433/reporting}
+    username: ${REPORTING_DB_USER:reporting}
+    password: ${REPORTING_DB_PASSWORD:reporting}
+  flyway:
+    enabled: true
   rabbitmq:
     host: ${RABBIT_HOST:localhost}
     port: ${RABBIT_PORT:5672}
     username: ${RABBIT_USER:tmc}
     password: ${RABBIT_PASSWORD:tmc}
+    listener:
+      simple:
+        # a message that keeps failing goes to the queue's DLQ after 3 tries instead of looping
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 500ms
