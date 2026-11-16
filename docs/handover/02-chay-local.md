@@ -1,6 +1,6 @@
 # Runbook: dựng server local, kiểm thử, dùng app nhân viên
 
-Làm theo tài liệu này trong ngày 12/11. Mục tiêu của ngày đầu: mỗi người tự chạy được stack, 3 demo và app nhân viên trên máy mình.
+Làm theo tài liệu này sáng 16/11, sau khi nhánh `chore/x/decouple-teams` đã vào `main` ([README.md](README.md), mục "Việc đầu tiên sáng 16/11"). Mục tiêu: mỗi người tự chạy được stack `local`, 3 demo, app nhân viên, và `integrationTest` của module mình trên Docker.
 
 Mọi lệnh chạy từ thư mục gốc của repo. Lệnh Gradle ghi theo kiểu macOS/Linux (`./gradlew`); trên Windows PowerShell thay bằng `.\gradlew.bat`.
 
@@ -20,9 +20,9 @@ Mọi lệnh chạy từ thư mục gốc của repo. Lệnh Gradle ghi theo ki�
 ./gradlew build
 ```
 
-Kết quả mong đợi: `BUILD SUCCESSFUL`. Lần đầu mất vài phút vì tải thư viện.
+Kết quả mong đợi: `BUILD SUCCESSFUL`, 209 test đơn vị, 10 bỏ qua có chủ đích (số ngày 16/11, macOS). Lần đầu mất vài phút vì tải thư viện.
 
-Trên **Windows**, 20 test của `kiosk-simulator` hiện lỗi do khóa file SQLite (story D-14). Cho đến khi sửa xong, dùng:
+Trên **Windows**, test của `kiosk-simulator` có thể lỗi do khóa file SQLite (story D-14, chưa kiểm chứng trên Windows). Cho đến khi D-14 xong, nếu gặp lỗi đó thì dùng:
 
 ```powershell
 .\gradlew.bat build -x :simulators:kiosk-simulator:test
@@ -52,13 +52,13 @@ pwsh scripts/dev/local-stack.ps1 stop
 ### macOS và Linux
 
 ```bash
-make local-up          # 4 service của edge
+make local-up          # 5 tiến trình như bản Windows, có identity (scripts/dev/local-stack.sh)
 make local-status
 make local-restart
 make local-down
-# identity chưa nằm trong script này, chạy riêng ở một cửa sổ khác:
-./gradlew :services:identity:bootRun
 ```
+
+`local-stack.sh` và `local-stack.ps1` khởi động cùng một bộ 5 tiến trình, cả hai ở profile `local`. Job `demo` của CI dùng `local-stack.sh` và kiểm thêm đăng nhập và JWKS của identity.
 
 Log nằm trong thư mục `.local/` (ví dụ `.local/gate-station.log`).
 
@@ -79,7 +79,7 @@ Khi cần debug một service, dừng nó trong stack rồi tự chạy với bi
 | user-qr | `:services:user-qr:bootRun` | `SPRING_PROFILES_ACTIVE=local` |
 | attendance | `:services:attendance:bootRun` | `SPRING_PROFILES_ACTIVE=local` |
 | gate-station | `:services:gate-station:bootRun` | `SPRING_PROFILES_ACTIVE=local`, `TURNSTILE_MODE=http` |
-| identity | `:services:identity:bootRun` | không |
+| identity | `:services:identity:bootRun` | `SPRING_PROFILES_ACTIVE=local` |
 | reporting, hr-integration, audit-admin | `:services:<tên>:bootRun` | `SPRING_PROFILES_ACTIVE=inmem` |
 
 Trong IntelliJ: mở lớp `...Application` trong gói `bootstrap`, bấm Run, rồi thêm biến môi trường ở *Edit Configurations > Environment variables*.
@@ -177,7 +177,7 @@ npm run dev:lan      # in ra địa chỉ dạng https://192.168.x.x:5174
 
 ### 5.6. Giới hạn cần biết
 
-- Đăng nhập chưa cấp JWT. App nhận `subject` rồi gửi lại qua header `X-Subject`, giống cách `web-portal` và `device-simulator` đang làm. Việc thay bằng JWT là story C-04 và D-13.
+- identity đã cấp JWT (`accessToken`), nhưng app vẫn gửi `subject` qua header `X-Subject`, giống `web-portal` và `device-simulator`. Ở profile `local` user-qr còn tin header này; ở profile mặc định thì không. Chuyển app và portal sang Bearer là story D-13.
 - Ở profile `local`, `user-qr` lưu thiết bị trong bộ nhớ. Khởi động lại stack thì server quên thiết bị, cổng trả `DEVICE_UNKNOWN`; app sẽ hiện nút **Đăng ký lại thiết bị**.
 - Đồng hồ của điện thoại lệch quá 60 giây so với máy chủ thì bị `CLOCK_SKEW_EXCEEDED` hoặc `QR_EXPIRED`.
 
@@ -194,7 +194,7 @@ node capture-screenshots.mjs
 
 Script dừng với lỗi nếu một bước của luồng không cho kết quả mong đợi, nên nó cũng dùng được như một bài kiểm thử giao diện từ đầu đến cuối.
 
-Ảnh của web portal (bảo vệ, quản đốc, HR) cần sự kiện đi qua RabbitMQ, nên phải chạy trên hạ tầng thật (mục 9) với cả 8 service ở profile mặc định, cùng `npm run dev` trong `apps/web-portal`:
+Ảnh của web portal (bảo vệ, quản đốc, HR) cần sự kiện đi qua RabbitMQ, nên phải chạy trên hạ tầng thật (mục 9) với cả 7 service ở profile mặc định và turnstile-simulator, cùng `npm run dev` trong `apps/web-portal`:
 
 ```bash
 cd scripts/docs
@@ -261,17 +261,29 @@ Trước khi mở PR, chạy tối thiểu: `./gradlew spotlessApply test`.
 ## 9. Hạ tầng thật bằng Docker
 
 ```bash
-docker compose -f docker/docker-compose.yml up -d      # PostgreSQL edge :5432, PostgreSQL central :5433, Redis :6379, RabbitMQ :5672
+make up        # = docker compose -f docker/docker-compose.yml up -d: PostgreSQL edge :5432, central :5433, Redis :6379, RabbitMQ :5672
 docker compose -f docker/docker-compose.yml ps
-docker compose -f docker/docker-compose.yml down       # dừng, giữ dữ liệu
-docker compose -f docker/docker-compose.yml down -v    # dừng và XÓA dữ liệu
+make down      # dừng, giữ dữ liệu
+make nuke      # dừng và XÓA dữ liệu (script init chạy lại ở lần make up sau)
 ```
 
 Giao diện quản trị RabbitMQ: <http://localhost:15672> (tài khoản `tmc` / `tmc`).
 
-Chạy service với hạ tầng thật: bỏ biến `SPRING_PROFILES_ACTIVE` (profile mặc định). Thứ tự khởi động: hạ tầng, `user-qr`, `attendance`, `gate-station`, rồi các consumer.
+**Container PostgreSQL edge tạo trước 16/11 thiếu database `gate_store`** (ADR-14), vì script init chỉ chạy khi volume trống. Cách sửa: `make nuke && make up` (mất dữ liệu), hoặc giữ dữ liệu bằng `docker exec -i tmc-postgres-edge psql -U postgres < docker/init/edge/02-gate-store.sql`. PostgreSQL central đã có sẵn database `user_qr`, `reporting`, `hr_integration`, `audit_admin`, `identity`.
 
-Test tích hợp dùng Testcontainers nên tự dựng container riêng; chỉ cần Docker đang chạy, không cần `docker compose up`.
+Chạy service với hạ tầng thật: bỏ biến `SPRING_PROFILES_ACTIVE` (profile mặc định). Thứ tự: hạ tầng, `turnstile-simulator`, `identity`, `user-qr`, `attendance`, `gate-station` (`SPRING_PROFILES_ACTIVE=default,gate-store` để dùng `gate_store`), rồi reporting, hr-integration, audit-admin. Danh sách biến môi trường: [`docs/runbook/local-setup.md`](../runbook/local-setup.md), mục "Chế độ đầy đủ".
+
+Ở profile mặc định, user-qr **không** tin header `X-Subject`. Lấy token rồi gửi Bearer:
+
+```bash
+curl -s -X POST http://localhost:8087/auth/v1/login -H 'Content-Type: application/json' \
+  -d '{"username":"nv001","password":"dev-only-change-me"}'        # trả accessToken (JWT ES256, 15 phút)
+curl -s http://localhost:8087/.well-known/jwks.json
+```
+
+Đã kiểm chứng ngày 16/11: 7 service khởi động ở profile mặc định trên `make up`, đăng nhập và Bearer chạy, sự kiện audit đi qua RabbitMQ ([`troubleshooting.md`](../runbook/troubleshooting.md), mục "Kết quả D-01"). **Chưa kiểm chứng:** 3 demo trên stack này (kiểm tích hợp I-6, 23/11).
+
+Test tích hợp dùng Testcontainers (`TmcContainers`) nên tự dựng container riêng; chỉ cần Docker đang chạy, không cần `make up`. Toàn repo hiện có 27 test tích hợp.
 
 ## 10. Xử lý sự cố
 
@@ -280,6 +292,8 @@ Test tích hợp dùng Testcontainers nên tự dựng container riêng; chỉ c
 | `cannot find symbol ... port.out` khi build | Bản repo cũ thiếu thư mục `adapter/out`, `port/out` do `.gitignore` chặn `out/` | Kéo bản mới nhất; `.gitignore` phải ghi `/out/`, không phải `out/` |
 | `Unsupported class file major version` hoặc lỗi toolchain | Gradle chạy bằng JDK khác 21 | Đặt lại `JAVA_HOME`; trong IntelliJ chọn lại Gradle JVM |
 | `Port 8081 was already in use` | Stack cũ còn chạy | `local-stack.ps1 stop` hoặc `make local-down` |
+| gate-station báo `database "gate_store" does not exist` | Container edge tạo trước khi có `docker/init/edge/02-gate-store.sql` | `make nuke && make up`, hoặc chạy tay script đó (mục 9) |
+| user-qr trả 401 hoặc 403 ở profile mặc định | Gửi header dev thay vì Bearer, hoặc identity chưa chạy nên không lấy được JWKS | Đăng nhập lấy `accessToken`, gửi `Authorization: Bearer`; khởi động identity trước |
 | `local-stack.ps1 start` không trả lại dấu nhắc | Đầu ra của script bị nối qua pipe (ví dụ `| tail`), các tiến trình Java giữ pipe mở | Chạy script trực tiếp, không nối pipe; stack vẫn lên bình thường |
 | Demo `FAIL` ngay bước quét đầu với `ANTI_PASSBACK_VIOLATION` | Chạy demo lần hai mà chưa xóa trạng thái | Khởi động lại stack |
 | App báo `DEVICE_UNKNOWN` | Stack vừa khởi động lại, `user-qr` quên thiết bị | Bấm **Đăng ký lại thiết bị** |
@@ -287,7 +301,7 @@ Test tích hợp dùng Testcontainers nên tự dựng container riêng; chỉ c
 | App báo không kết nối được dịch vụ đăng nhập | `identity` chưa chạy | Khởi động `identity` (cổng 8087) |
 | Kết quả quét là `LỖI HỆ THỐNG`, mã `DEPENDENCY_UNAVAILABLE` | `attendance` hoặc `user-qr` đang tắt | Xem `.local/*.log`, khởi động lại service đó |
 | `QR_EXPIRED` dù vừa tạo mã | Đồng hồ điện thoại lệch | Bật giờ tự động trên điện thoại |
-| 20 test `kiosk-simulator` đỏ trên Windows | Khóa file SQLite | Thêm `-x :simulators:kiosk-simulator:test`, theo dõi D-14 |
+| Test `kiosk-simulator` đỏ trên Windows | Khóa file SQLite | Thêm `-x :simulators:kiosk-simulator:test`, theo dõi D-14 |
 | `spotlessCheck` đỏ | Mã chưa định dạng | `./gradlew spotlessApply` |
 | `ArchitectureTest` đỏ | Vi phạm chiều phụ thuộc (ví dụ `domain` import Spring) | Chuyển mã về đúng gói; xem [00-he-thong.md](00-he-thong.md) mục 7 |
 | Test tích hợp báo không tìm thấy Docker | Docker Desktop chưa chạy | Mở Docker Desktop rồi chạy lại |

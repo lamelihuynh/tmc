@@ -202,7 +202,7 @@ Team D điều phối các buổi kiểm tích hợp nhưng không story nào c�
 | I-3 | 19/11 | B | Hiệu chỉnh thật qua RabbitMQ: reporting áp, hr-integration gửi bản hiệu chỉnh |
 | I-4 | 23/11 | A, C | Audit từ user-qr, identity, gate-station vào `GET /admin/v1/audit` trên kho bền (D-08) |
 | I-5 | 23/11 | A, C | App và portal dùng Bearer trên profile mặc định, tới user-qr, gate-station và ba service trung tâm |
-| I-6 | 23/11 | cả nhóm | 8 service ở profile mặc định trên `make up`, chạy 3 demo (hiện **chưa kiểm chứng**, chỉ mới chạy trên `local`) |
+| I-6 | 23/11 | cả nhóm | 7 service ở profile mặc định và turnstile-simulator trên `make up`, chạy 3 demo (hiện **chưa kiểm chứng**, chỉ mới chạy trên `local`) |
 | I-7 | 23/11 | A | Đo tải A-09 trên stack Docker |
 
 ## 6. Bẫy cần tránh

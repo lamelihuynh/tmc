@@ -40,7 +40,7 @@ flowchart LR
     aud[audit-admin :8086<br/>Team D]
     portal[web-portal :5173<br/>Team D]
   end
-  broker[[RabbitMQ<br/>tmc.attendance.events]]
+  broker[[RabbitMQ<br/>exchange tmc.events]]
   hrp([HR/Payroll hiện hữu])
 
   phone -- "QR sống 30 giây" --> kiosk
@@ -53,6 +53,8 @@ flowchart LR
   gs -- "lệnh mở" --> turn
   att -- "hỏi cổng đã mở chưa" --> gs
   att -- "outbox" --> broker
+  qr -. "outbox audit" .-> broker
+  idn -. "outbox audit" .-> broker
   broker --> rep
   broker --> hr
   broker --> aud
@@ -65,20 +67,20 @@ flowchart LR
 
 | Thành phần | Cổng | Team | Việc nó làm | Dữ liệu nó giữ |
 | --- | --- | --- | --- | --- |
-| `gate-station` | 8081 | A | Điều phối một lượt quét: gọi xác thực QR, áp quy tắc ra vào, giữ chỗ token, ra lệnh mở cổng | Danh mục cổng, trạng thái anti-passback, token đã dùng (Redis) |
-| `attendance` | 8082 | B | Sổ ghi mọi lượt quét, máy trạng thái của lượt quét, phát sự kiện qua outbox | `access_attempts`, `attendance_transactions`, `outbox_events` (PostgreSQL) |
-| `user-qr` | 8083 | C | Giữ khóa công khai của từng điện thoại, xác thực chữ ký và thời hạn của QR | `devices` (PostgreSQL) |
-| `identity` | 8087 | C | Đăng nhập, khóa tài khoản sau 5 lần sai, MFA | Tài khoản |
-| `reporting` | 8084 | D | Ai đang ở trong nhà máy, báo cáo, quy tắc phát hiện gian lận | Read model hiện diện |
-| `hr-integration` | 8085 | D | Đẩy công sang HR/Payroll, theo dõi trạng thái đồng bộ | `sync_log` |
-| `audit-admin` | 8086 | D | Nhật ký kiểm toán chỉ thêm, không sửa, không xóa | Nhật ký |
+| `gate-station` | 8081 | A | Điều phối một lượt quét: gọi xác thực QR, áp quy tắc ra vào, giữ chỗ token, ra lệnh mở cổng | Trạng thái anti-passback, token đã dùng (Redis); danh mục cổng và outbox audit trong database `gate_store` (ADR-14, profile `gate-store`; bảng `gates` dùng từ A-04) |
+| `attendance` | 8082 | B | Sổ ghi mọi lượt quét, máy trạng thái của lượt quét, hiệu chỉnh, phát sự kiện qua outbox | `access_attempts`, `attendance_transactions`, `attendance_corrections`, `outbox_events` (PostgreSQL) |
+| `user-qr` | 8083 | C | Giữ khóa công khai của từng điện thoại, xác thực chữ ký và thời hạn của QR, gói đồng bộ có danh bạ nhân viên | `devices`, `outbox_events` (PostgreSQL); danh bạ nhân viên đang trong bộ nhớ (C-02 chuyển sang bảng) |
+| `identity` | 8087 | C | Đăng nhập, khóa tài khoản sau 5 lần sai, MFA, cấp JWT ES256, JWKS | Tài khoản và outbox trong bộ nhớ (C-11 thêm database `identity`) |
+| `reporting` | 8084 | D | Ai đang ở trong nhà máy, báo cáo, quy tắc phát hiện gian lận | Read model hiện diện (bộ nhớ, D-04 chuyển PostgreSQL); `processed_messages` |
+| `hr-integration` | 8085 | D | Đẩy công sang HR/Payroll, theo dõi trạng thái đồng bộ | Nhật ký đồng bộ (bộ nhớ); `processed_messages` |
+| `audit-admin` | 8086 | D | Nhật ký kiểm toán chỉ thêm, không sửa, không xóa | Nhật ký (bộ nhớ, D-08 chuyển PostgreSQL); `processed_messages` |
 | `turnstile-simulator` | 8090 | A | Giả lập hệ thống điều khiển cổng xoay, chèn được lỗi | Trạng thái cổng |
 | `kiosk-simulator` | CLI | D | Giả lập kiosk đầy đủ: journal, chế độ mất mạng, gửi bù | SQLite |
 | `device-simulator` | CLI | C | Giả lập điện thoại: tạo khóa, ký token | File khóa |
 | `apps/employee-app` | 5174 | D (C phối hợp) | Ứng dụng web cho nhân viên: đăng nhập, hiện QR; kèm trang `/kiosk` quét bằng webcam | Khóa riêng trong trình duyệt |
 | `apps/web-portal` | 5173 | D | Cổng thông tin cho bảo vệ, quản đốc, HR | Không |
 
-Thư viện dùng chung trong `platform/` (không chứa nghiệp vụ): `common-kernel` (đồng hồ, UUID v7, `ReasonCode`, `EventEnvelope`), `messaging` (`EventPublisher`, `IdempotentConsumer`), `security` (`Role`, `Principal`, `Rbac`), `test-support` (luật ArchUnit).
+Thư viện dùng chung trong `platform/` (không chứa nghiệp vụ): `common-kernel` (đồng hồ, UUID v7, `ReasonCode`, `EventEnvelope`), `messaging` (`EventPublisher`, `IdempotentConsumer`, `TmcExchange`, outbox, relay, `AmqpEnvelopePublisher`, `JdbcProcessedMessageStore`, `AuditOutbox`; ADR-15), `security` (`Role`, `Principal`, `Rbac`, `PrincipalResolver`, `jwt/*`, fixture `TestJwtKeys`, `TestTokens`), `test-support` (luật ArchUnit, `TmcContainers`).
 
 ## 3. Một lượt quét, từ đầu đến cuối
 
@@ -172,24 +174,24 @@ Bốn lớp chống dùng lại:
 
 | Lớp | Cơ chế | Ở đâu | Hiện trạng |
 | --- | --- | --- | --- |
-| R1 | Giữ chỗ `jti` nguyên tử (`SET NX`) | `ITokenReservation` của gate-station | Chạy được bằng bộ nhớ; bản Redis chờ kiểm chứng (A-01) |
+| R1 | Giữ chỗ `jti` nguyên tử (`SET NX`) | `ITokenReservation` của gate-station | Có; bản Redis đã kiểm bằng `RedisAdaptersIT` (còn test khởi động lại, A-01) |
 | R2 | Bộ nhớ đệm `jti` tại kiosk khi mất mạng | `kiosk-simulator` | Có |
 | R3 | Phát hiện cùng `jti` ở hai kiosk khi nhập lô offline | `IngestOfflineBatchUseCase` | Có |
-| R4 | Quy tắc gian lận (ví dụ BD rồi LA cách 10 phút) | `FraudRule` của reporting | Mới có interface (D-05) |
+| R4 | Quy tắc gian lận (ví dụ BD rồi LA cách 10 phút) | `FraudRule` của reporting | Mới có interface (D-05, 16/11) |
 
 ## 6. Sự kiện giữa biên và trung tâm
 
-`attendance` là nơi duy nhất phát sự kiện. Mỗi thay đổi trạng thái và sự kiện tương ứng được ghi trong cùng một transaction (outbox), rồi một tác vụ nền đẩy lên RabbitMQ. Hợp đồng: [`attendance-events.asyncapi.yaml`](../api/attendance-events.asyncapi.yaml).
+Mọi sự kiện đi qua một exchange `tmc.events`, khóa định tuyến `<nguồn>.<EventType>` (ADR-15). Bên phát ghi thay đổi trạng thái và sự kiện trong cùng một transaction (outbox), rồi một tác vụ nền đẩy lên RabbitMQ. Hợp đồng: [`attendance-events.asyncapi.yaml`](../api/attendance-events.asyncapi.yaml).
 
-| Sự kiện | Khi nào | Ai nghe |
-| --- | --- | --- |
-| `AccessAttemptRecorded` | Lượt quét được ghi nhận | reporting |
-| `GateResultRecorded` | Có kết quả từ cổng | reporting |
-| `AttendanceConfirmed` | Lượt quét thành công được tính công | reporting, hr-integration |
-| `AuditRecorded` | Từ chối, bất thường, mở thủ công | audit-admin |
-| `AttendanceCorrected` | HR hiệu chỉnh (chưa có, B-06) | reporting, hr-integration |
+| Sự kiện | Bên phát | Khi nào | Ai nghe |
+| --- | --- | --- | --- |
+| `AccessAttemptRecorded` | attendance | Lượt quét được ghi nhận | reporting |
+| `GateResultRecorded` | attendance | Có kết quả từ cổng | reporting |
+| `AttendanceConfirmed` | attendance | Lượt quét thành công được tính công | reporting, hr-integration |
+| `AttendanceCorrected` | attendance | HR hiệu chỉnh (hợp đồng và lưu trữ đã có; use case và endpoint là B-06) | reporting (đã áp dụng), hr-integration (D-06) |
+| `AuditRecorded` | attendance; user-qr, identity (C-08); gate-station (A-12) | Từ chối, bất thường, mở thủ công, thao tác thiết bị, đăng nhập | audit-admin |
 
-Bên nghe phải lũy đẳng: cùng một thông điệp đến hai lần chỉ được xử lý một lần (`IdempotentConsumer`).
+Mỗi consumer có hàng đợi riêng và DLQ `<tên>.dlq`, thử lại 3 lần, chống xử lý trùng bằng bảng `processed_messages` (`IdempotentConsumer`, `JdbcProcessedMessageStore`).
 
 ## 7. Bên trong một service
 
@@ -228,17 +230,18 @@ Luật phụ thuộc được kiểm bằng test: mỗi service có `Architectur
 | `local` | Bộ nhớ | HTTP thật | Dựng cả stack trên máy mà không cần Docker; demo |
 | mặc định | PostgreSQL, Redis, RabbitMQ | HTTP thật, sự kiện thật | Kiểm thử tích hợp (cần Docker) |
 
-Lưu ý: ở `inmem` và `local`, sự kiện không đi qua tiến trình khác, nên `reporting`, `hr-integration`, `audit-admin` chỉ nhận được sự kiện khi chạy profile mặc định với RabbitMQ.
+Lưu ý: ở `inmem` và `local`, listener RabbitMQ của `reporting`, `hr-integration`, `audit-admin` tắt; ba service này chỉ nhận sự kiện khi chạy profile mặc định với RabbitMQ. Gate-station thêm profile `gate-store` để dùng database `gate_store`.
 
-## 9. Danh tính và phân quyền, hiện tại và đích đến
+## 9. Danh tính và phân quyền
 
-| | Hiện tại | Đích đến (C-04, C-06) |
+| | Hiện tại (16/11) | Đích đến trong đợt này |
 | --- | --- | --- |
-| Đăng nhập | `POST /auth/v1/login` trả `status`, `subject`, `roles` | Trả JWT ký ES256, có JWKS |
-| Gọi API | Client tự gửi header `X-Subject`, `X-Roles`, `X-Scope-*` | Service xác thực JWT |
-| Kiểm quyền | Service tự kiểm bằng `Rbac` (đã có) | Không đổi |
+| Đăng nhập | `POST /auth/v1/login` trả `accessToken` (JWT ES256, 15 phút), vẫn giữ `subject`, `roles`; `GET /.well-known/jwks.json` | Thêm xoay khóa (C-12), TOTP cho MFA (C-05) |
+| Gọi API | user-qr kiểm Bearer; service khác vẫn đọc header `X-Subject`, `X-Roles`, `X-Scope-*` | gate-station (A-11), attendance (B-06), reporting, hr-integration, audit-admin (D-13) dùng `PrincipalResolver` |
+| Client | App nhân viên và portal gửi header dev | Gửi Bearer (D-13) |
+| Kiểm quyền | Service tự kiểm bằng `Rbac` | Không đổi |
 
-Header danh tính hiện tại **không an toàn**, chỉ để phát triển. Đừng mô tả nó như cơ chế bảo mật trong báo cáo.
+Header danh tính chỉ được tin ở profile `local`, `inmem`; ở profile mặc định, service đã gắn `PrincipalResolver` đòi Bearer. Đừng mô tả header dev như cơ chế bảo mật trong báo cáo.
 
 ## 10. Bảng mã lý do thường gặp
 
