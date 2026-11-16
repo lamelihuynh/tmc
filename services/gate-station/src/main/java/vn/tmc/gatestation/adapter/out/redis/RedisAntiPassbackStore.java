@@ -23,7 +23,8 @@ import vn.tmc.gatestation.domain.LastPass;
  *
  * confirm moves pending to last in one Lua script.
  *
- * <p>Verified against Redis by RedisAdaptersIT. TODO Team A (A-03): rebuild "last" from Attendance when the key is missing (cold cache).
+ * <p>Verified against Redis by RedisAdaptersIT. TODO Team A (A-03): rebuild "last" from Attendance
+ * when the key is missing (cold cache).
  */
 public class RedisAntiPassbackStore implements IAntiPassbackStore {
   private static final String LAST = "tmc:apb:last:";
