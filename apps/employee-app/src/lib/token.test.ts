@@ -1,5 +1,19 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { base64Url, buildClaims, signToken } from './token'
+import { base64Url, buildClaims, signToken, TOKEN_TTL_SECONDS } from './token'
+
+// Shared with user-qr and kiosk-simulator (QrTokenPolicyContractTest): change all three together.
+const policy = JSON.parse(
+  readFileSync(
+    new URL('../../../../docs/api/fixtures/qr-token-policy.json', import.meta.url),
+    'utf8',
+  ),
+) as {
+  allowedClaims: string[]
+  defaultTtlSeconds: number
+  maxLifetimeSeconds: number
+  algorithm: string
+}
 
 const input = {
   deviceId: 'dev-test',
@@ -12,6 +26,14 @@ function decodePart(part: string): Record<string, unknown> {
 }
 
 describe('QR token (ADR-12)', () => {
+  it('follows the shared policy file docs/api/fixtures/qr-token-policy.json', () => {
+    const claims = buildClaims(input, { issuedAt: 1000 })
+    expect(Object.keys(claims).sort()).toEqual([...policy.allowedClaims].sort())
+    expect(TOKEN_TTL_SECONDS).toBe(policy.defaultTtlSeconds)
+    expect(TOKEN_TTL_SECONDS).toBeLessThanOrEqual(policy.maxLifetimeSeconds)
+    expect(policy.algorithm).toBe('ES256')
+  })
+
   it('carries only the six allowed claims and lives 30 seconds', () => {
     const claims = buildClaims(input, { issuedAt: 1000 })
     expect(Object.keys(claims).sort()).toEqual(['exp', 'fac', 'iat', 'jti', 'nonce', 'sub'])
