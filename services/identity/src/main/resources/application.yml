@@ -3,3 +3,14 @@ server:
 spring:
   application:
     name: identity
+  rabbitmq:
+    host: ${RABBIT_HOST:localhost}
+    port: ${RABBIT_PORT:5672}
+    username: ${RABBIT_USER:tmc}
+    password: ${RABBIT_PASSWORD:tmc}
+    publisher-confirm-type: correlated
+tmc:
+  identity:
+    jwt:
+      # private EC P-256 JWK (JSON). Empty: a key generated at start-up (dev only).
+      private-jwk: ${IDENTITY_JWT_PRIVATE_JWK:}

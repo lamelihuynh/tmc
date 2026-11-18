@@ -1,0 +1,8 @@
+{
+  "name": "tmc-docs-tools",
+  "private": true,
+  "type": "module",
+  "description": "Regenerates the screenshots and the walkthrough GIF in docs/screenshots from the running app.",
+  "scripts": { "capture": "node capture-screenshots.mjs" },
+  "dependencies": { "gifenc": "1.0.3", "pngjs": "7.0.0", "puppeteer-core": "23.9.0" }
+}

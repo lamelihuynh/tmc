@@ -1,6 +1,6 @@
 # ADR-11: Offline-first store-and-forward với máy trạng thái giao dịch tại cổng
 
-| Trạng thái | Proposed (đề xuất cho M2, chờ nhóm duyệt) |
+| Trạng thái | Accepted (16/11/2026), xem "Ghi chú khi chấp thuận" |
 | --- | --- |
 | Ngày | 06/11/2026 |
 | Vấn đề giải quyết | I-1: Hệ thống mất kết nối trong lúc đang xử lý giao dịch chấm công |
@@ -107,6 +107,17 @@ Edge **không bao giờ** gửi lệnh mở cổng khi nhập batch offline (c�
 (–) Thêm bảng `access_attempts`, job phục hồi và job reconcile ở Edge.
 (–) Trạng thái GATE_UNKNOWN có thể tồn tại vài giây đến vài phút; báo cáo phải hiển thị "chưa đối soát".
 (–) Phụ thuộc Turnstile có API `status` hoặc webhook để reconcile; nếu không có, GATE_UNKNOWN chuyển cho bảo vệ xác minh (UC-06).
+
+## Ghi chú khi chấp thuận (16/11/2026)
+
+Chấp thuận cùng các điều chỉnh để khớp mã (`docs/architecture/implementation-notes.md` mục 1, điểm 1 và 2):
+`PUBLISHED` là trạng thái của hàng outbox chứ không phải của lượt quét; `GATE_FAILED` là trạng thái cuối, không đi qua `COMMITTED`.
+Sơ đồ đúng là `docs/architecture/state-machine.md`.
+
+**Hệ quả và đánh đổi bổ sung:** outbox và hàng đợi tiêu thụ đã chạy thật với PostgreSQL và RabbitMQ (`PersistenceAndBrokerIT`,
+`MessagingInfraIT`, IT của reporting, hr-integration, audit-admin). Đổi lại, mỗi consumer phải giữ bảng `processed_messages`
+và một DLQ; read model của reporting và nhật ký đồng bộ HR vẫn ở bộ nhớ (D-04, D-06) nên khởi động lại thì mất trạng thái chiếu.
+Anti-passback sau khi nhập offline vẫn là khoảng trống đã biết (`implementation-notes.md` mục 3). Chưa có số đo hiệu năng (A-09).
 
 ## Kiểm chứng tuân thủ (Compliance)
 

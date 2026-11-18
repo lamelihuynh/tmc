@@ -81,7 +81,7 @@ paths:
                   factories: { type: array, items: { type: string } }
   /internal/v1/sync-bundle:
     get:
-      summary: Khóa công khai và thu hồi thay đổi sau `since` (Edge Agent và kiosk dùng để xác thực offline)
+      summary: Khóa công khai, thu hồi và danh bạ đủ điều kiện thay đổi sau `since` (Edge Agent và kiosk dùng để xác thực offline)
       parameters:
         - { name: since, in: query, required: false, schema: { type: string, format: date-time } }
       responses:
@@ -102,11 +102,26 @@ paths:
                         employeeUuid: { type: string, format: uuid }
                         publicKeyX509Base64: { type: string }
                         revoked: { type: boolean }
+                  employees:
+                    type: array
+                    description: "Nhân viên thay đổi sau `since` (C-02). Bên đọc PHẢI bỏ qua trường lạ; bản cũ không có mảng này = rỗng"
+                    items: { $ref: "#/components/schemas/EmployeeEligibility" }
 components:
   parameters:
     Subject: { name: X-Subject, in: header, required: true, schema: { type: string, format: uuid } }
     Roles: { name: X-Roles, in: header, required: true, schema: { type: string }, example: EMPLOYEE }
   schemas:
+    EmployeeEligibility:
+      type: object
+      description: |
+        Chỉ dữ liệu đủ điều kiện, KHÔNG tên hay thông tin cá nhân (ADR-09). Bản ghi mới nhất theo
+        `employeeUuid` thay bản cũ; nhân viên nghỉ việc vẫn xuất hiện với status INACTIVE (không bị xóa).
+      required: [employeeUuid, status, factories]
+      properties:
+        employeeUuid: { type: string, format: uuid }
+        status: { type: string, enum: [ACTIVE, INACTIVE] }
+        factories: { type: array, items: { type: string }, example: [BD, LA] }
+        updatedAt: { type: string, format: date-time }
     QrTokenClaims:
       description: |
         Token QR là JWS compact ES256, header `kid` = deviceId. CHỈ các claim dưới đây được chấp nhận;

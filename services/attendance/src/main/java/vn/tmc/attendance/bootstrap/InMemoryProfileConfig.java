@@ -8,10 +8,12 @@ import org.springframework.web.client.RestClient;
 import vn.tmc.attendance.adapter.out.http.HttpGateStatusQuery;
 import vn.tmc.attendance.adapter.out.inmem.ConfigurableGateStatusQuery;
 import vn.tmc.attendance.adapter.out.inmem.InMemoryAttemptRepository;
+import vn.tmc.attendance.adapter.out.inmem.InMemoryAttendanceCorrectionRepository;
 import vn.tmc.attendance.adapter.out.inmem.InMemoryAttendanceTransactionRepository;
 import vn.tmc.attendance.adapter.out.inmem.InMemoryOutboxRepository;
 import vn.tmc.attendance.adapter.out.inmem.InMemoryStore;
 import vn.tmc.attendance.application.port.out.IAttemptRepository;
+import vn.tmc.attendance.application.port.out.IAttendanceCorrectionRepository;
 import vn.tmc.attendance.application.port.out.IAttendanceTransactionRepository;
 import vn.tmc.attendance.application.port.out.IGateStatusQuery;
 import vn.tmc.attendance.application.port.out.IOutboxRepository;
@@ -34,6 +36,12 @@ public class InMemoryProfileConfig {
   @Bean
   IAttendanceTransactionRepository transactions() {
     return new InMemoryAttendanceTransactionRepository();
+  }
+
+  /** Ready for B-06 (correction use case); nothing writes corrections yet. */
+  @Bean
+  IAttendanceCorrectionRepository corrections() {
+    return new InMemoryAttendanceCorrectionRepository();
   }
 
   @Bean

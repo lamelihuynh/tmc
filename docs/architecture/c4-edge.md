@@ -16,7 +16,7 @@ flowchart LR
   end
   qr[user-qr<br/>xác thực JWS theo kid]
   turn[Turnstile Control System<br/>hiện hữu]:::ext
-  broker[[RabbitMQ<br/>tmc.attendance.events]]
+  broker[[RabbitMQ<br/>tmc.events]]
   subgraph central[Central site]
     rep[reporting]
     hr[hr-integration]

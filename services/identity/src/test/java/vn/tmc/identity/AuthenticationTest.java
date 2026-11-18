@@ -7,13 +7,17 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import vn.tmc.identity.adapter.out.crypto.NimbusAccessTokenIssuer;
 import vn.tmc.identity.adapter.out.inmem.InMemoryAccountRepository;
 import vn.tmc.identity.adapter.out.inmem.Pbkdf2PasswordVerifier;
 import vn.tmc.identity.application.port.in.IAuthentication.Status;
 import vn.tmc.identity.application.usecase.AuthenticateUseCase;
+import vn.tmc.identity.application.usecase.LoginUseCase;
 import vn.tmc.identity.domain.Account;
 import vn.tmc.platform.kernel.IClock;
 import vn.tmc.platform.security.Role;
+import vn.tmc.platform.security.jwt.AccessTokenContract;
+import vn.tmc.platform.security.jwt.TestJwtKeys;
 
 class AuthenticationTest {
   private final InMemoryAccountRepository accounts = new InMemoryAccountRepository();
@@ -116,10 +120,25 @@ class AuthenticationTest {
     assertThat(passwords.toString()).doesNotContain("secret-123");
   }
 
-  @Disabled(
-      "TODO Team C (ADR-08): issue an ES256 JWT with roles and scope claims and serve the JWKS")
   @Test
-  void should_issue_a_signed_token_on_successful_login() {}
+  void should_issue_a_signed_token_on_successful_login() {
+    accounts.save(
+        new Account(UUID.randomUUID(), "sup", Set.of(Role.PRODUCTION_SUPERVISOR), Set.of("BD")));
+    passwords.set("sup", "correct-horse");
+    now = Instant.now(); // the shared test verifier runs on the system clock
+    var login = new LoginUseCase(auth, new NimbusAccessTokenIssuer(TestJwtKeys.TRUSTED), clock);
+
+    var granted = login.login("sup", "correct-horse", null);
+    var refused = login.login("sup", "wrong", null);
+
+    var principal = TestJwtKeys.verifier().verify(granted.accessToken());
+    assertThat(principal.subject()).isEqualTo(granted.subject());
+    assertThat(principal.roles()).containsExactly(Role.PRODUCTION_SUPERVISOR);
+    assertThat(principal.scope().factories()).containsExactly("BD");
+    assertThat(granted.expiresAt()).isEqualTo(now.plus(AccessTokenContract.TTL));
+    assertThat(refused.accessToken()).isNull();
+    assertThat(refused.subject()).isNull();
+  }
 
   @Disabled("TODO Team C (NFR-03): sessions expire after 15 minutes of inactivity")
   @Test

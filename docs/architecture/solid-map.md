@@ -34,7 +34,7 @@ Bốn lý do thay đổi của luồng quét (M1 mục 8.1.1) nằm ở bốn l�
 | --- | --- | --- | --- |
 | `ITurnstileControlPort` | `HttpTurnstileAdapter`, `SimulatedTurnstileAdapter` | Không ném ngoại lệ vì lỗi thiết bị; trả đúng `OPENED`, `ERROR`, `TIMEOUT`; `TIMEOUT` nghĩa là chưa rõ, không bao giờ coi là chưa mở | `HttpTurnstileAdapterTest` (bảng ánh xạ lỗi) và toàn bộ `RecordScanUseCaseTest` chạy trên bản mô phỏng |
 | `IAttemptRepository`, `IOutboxRepository` | bản in-memory và bản JDBC | Cùng ngữ nghĩa upsert, thứ tự outbox theo thêm vào, `fetchPending` ẩn hàng đã phát | `Adr11ResilienceTest` (in-memory) và `PersistenceAndBrokerIT` (JDBC, cần Docker) |
-| `EventPublisher` | `AmqpEventPublisher`, `InMemoryEventBroker` | Chỉ trả về sau khi broker xác nhận; ném `PublishFailedException` khi không xác nhận | `Adr11ResilienceTest` (broker tắt) |
+| `EventPublisher` | `AmqpEnvelopePublisher` (platform/messaging), `InMemoryEventBroker` | Chỉ trả về sau khi broker xác nhận; ném `PublishFailedException` khi không xác nhận | `Adr11ResilienceTest` (broker tắt) |
 | `IAttendanceGateway` | `HttpAttendanceGateway`, `FakeAttendanceGateway` | Idempotent theo `attemptId` | `RecordScanUseCaseTest` |
 
 ## I: Interface Segregation

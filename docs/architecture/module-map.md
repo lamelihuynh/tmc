@@ -54,7 +54,7 @@ flowchart LR
 | Thành phần M1 (mục 11.2) | Module |
 | --- | --- |
 | Kiosk / QR Reader | `simulators/kiosk-simulator` (ứng dụng kiosk thật nằm ngoài phạm vi) |
-| Web Portal / Mobile App | `apps/web-portal` (mobile app được mô phỏng bởi `device-simulator`) |
+| Web Portal / Mobile App | `apps/web-portal`; mobile app được mô phỏng bởi `apps/employee-app` (web, WebCrypto) và `device-simulator` (dòng lệnh) |
 | API Gateway / Identity | `services/identity` (gateway: dùng header giả lập, xem `PrincipalHeaders`) |
 | User / QR Service | `services/user-qr` |
 | Gate Station Service (+ Turnstile Adapter) | `services/gate-station` (`adapter/out/http/HttpTurnstileAdapter`) |

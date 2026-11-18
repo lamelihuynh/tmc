@@ -21,7 +21,8 @@ import java.util.UUID;
  * <p>Fail-secure (DP-04): no cached key, a revoked key or any doubt means DENY, never open.
  */
 public class OfflineVerifier {
-  private static final Set<String> ALLOWED = Set.of("sub", "jti", "iat", "exp", "fac", "nonce");
+  /** Same list as user-qr QrClaims.ALLOWED_CLAIM_NAMES (docs/api/fixtures/qr-token-policy.json). */
+  static final Set<String> ALLOWED = Set.of("sub", "jti", "iat", "exp", "fac", "nonce");
 
   public record Verdict(boolean valid, String reason, String employeeUuid, String jti) {
     static Verdict denied(String reason) {
@@ -40,6 +41,14 @@ public class OfflineVerifier {
     this.clockSkew = clockSkew;
     this.maxLifetime = maxLifetime;
     this.replayWindow = replayWindow;
+  }
+
+  Duration clockSkew() {
+    return clockSkew;
+  }
+
+  Duration maxLifetime() {
+    return maxLifetime;
   }
 
   public Verdict verify(String token, Instant now) {

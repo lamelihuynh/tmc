@@ -14,17 +14,20 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
 import vn.tmc.attendance.adapter.out.http.HttpGateStatusQuery;
-import vn.tmc.attendance.adapter.out.messaging.AmqpEventPublisher;
 import vn.tmc.attendance.adapter.out.persistence.JdbcAttemptRepository;
+import vn.tmc.attendance.adapter.out.persistence.JdbcAttendanceCorrectionRepository;
 import vn.tmc.attendance.adapter.out.persistence.JdbcAttendanceTransactionRepository;
 import vn.tmc.attendance.adapter.out.persistence.JdbcOutboxRepository;
 import vn.tmc.attendance.adapter.out.persistence.SpringTransactionRunner;
 import vn.tmc.attendance.application.port.out.IAttemptRepository;
+import vn.tmc.attendance.application.port.out.IAttendanceCorrectionRepository;
 import vn.tmc.attendance.application.port.out.IAttendanceTransactionRepository;
 import vn.tmc.attendance.application.port.out.IGateStatusQuery;
 import vn.tmc.attendance.application.port.out.IOutboxRepository;
 import vn.tmc.attendance.application.port.out.ITransactionRunner;
 import vn.tmc.platform.messaging.EventPublisher;
+import vn.tmc.platform.messaging.TmcExchange;
+import vn.tmc.platform.messaging.amqp.AmqpEnvelopePublisher;
 
 /**
  * Default profile: PostgreSQL (Flyway), RabbitMQ with publisher confirms, HTTP query to Gate
@@ -44,6 +47,12 @@ public class InfrastructureProfileConfig {
     return new JdbcAttendanceTransactionRepository(jdbc);
   }
 
+  /** Ready for B-06 (correction use case); nothing writes corrections yet. */
+  @Bean
+  IAttendanceCorrectionRepository corrections(JdbcTemplate jdbc) {
+    return new JdbcAttendanceCorrectionRepository(jdbc);
+  }
+
   @Bean
   IOutboxRepository outbox(JdbcTemplate jdbc, ObjectMapper mapper) {
     return new JdbcOutboxRepository(jdbc, mapper);
@@ -54,9 +63,10 @@ public class InfrastructureProfileConfig {
     return new SpringTransactionRunner(new TransactionTemplate(manager));
   }
 
+  /** The shared exchange (ADR-15); routing keys stay attendance.<EventType>. */
   @Bean
-  TopicExchange attendanceExchange() {
-    return new TopicExchange(AmqpEventPublisher.EXCHANGE, true, false);
+  TopicExchange tmcEventsExchange() {
+    return new TopicExchange(TmcExchange.NAME, true, false);
   }
 
   @Bean
@@ -68,7 +78,7 @@ public class InfrastructureProfileConfig {
   EventPublisher eventPublisher(
       RabbitTemplate rabbit,
       @Value("${tmc.attendance.broker.confirm-timeout-ms:2000}") long timeout) {
-    return new AmqpEventPublisher(rabbit, timeout);
+    return new AmqpEnvelopePublisher(rabbit, TmcExchange.ATTENDANCE, timeout);
   }
 
   @Bean

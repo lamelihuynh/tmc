@@ -1,0 +1,10 @@
+{
+  "description": "Single source of the dev employee seed. identity (accounts nv001-nv005), user-qr (sync bundle roster) and gate-station (application.yml eligibility) must match this file; EmployeeSeedContractTest in each of those modules enforces it. Dev password for every account: dev-only-change-me.",
+  "employees": [
+    { "username": "nv001", "employeeUuid": "0192a1c0-0000-7000-8000-000000000001", "status": "ACTIVE", "factories": ["BD", "LA"] },
+    { "username": "nv002", "employeeUuid": "0192a1c0-0000-7000-8000-000000000002", "status": "ACTIVE", "factories": ["BD"] },
+    { "username": "nv003", "employeeUuid": "0192a1c0-0000-7000-8000-000000000003", "status": "INACTIVE", "factories": ["BD"] },
+    { "username": "nv004", "employeeUuid": "0192a1c0-0000-7000-8000-000000000004", "status": "ACTIVE", "factories": ["BD", "LA"] },
+    { "username": "nv005", "employeeUuid": "0192a1c0-0000-7000-8000-000000000005", "status": "ACTIVE", "factories": ["BD", "LA"] }
+  ]
+}

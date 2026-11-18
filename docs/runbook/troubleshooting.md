@@ -40,8 +40,27 @@ Mỗi mục là một tình huống đã gặp khi dựng scaffold hoặc rất 
 | Flyway báo checksum không khớp | Đã sửa migration đã áp dụng | Không sửa migration cũ; thêm `V2__...`. Môi trường phát triển: `make nuke` |
 | Service không nhận được sự kiện | Hàng đợi chưa được khai báo hoặc chưa bind | Mở `http://localhost:15672` (tmc/tmc), kiểm tra queue `tmc.reporting.attendance` và binding `attendance.*` |
 | Thông điệp lặp lại | Phát ít nhất một lần là chủ đích | Consumer phải khử trùng; xem `IdempotentConsumer` |
+| gate-station profile `gate-store` báo `database "gate_store" does not exist` | Container `tmc-postgres-edge` được tạo **trước** khi có `docker/init/edge/02-gate-store.sql`; script init chỉ chạy khi volume trống | Giữ dữ liệu: `docker exec -i tmc-postgres-edge psql -U postgres < docker/init/edge/02-gate-store.sql`. Hoặc xóa dữ liệu: `make nuke && make up` |
+| Consumer không nhận gì sau khi cập nhật nhánh | Exchange đổi từ `tmc.attendance.events` sang `tmc.events` (ADR-15); hàng đợi cũ còn bind exchange cũ | Khởi động lại consumer (nó tự bind vào `tmc.events`); xóa exchange cũ trong UI :15672 hoặc `make nuke` |
+| Consumer báo `PRECONDITION_FAILED ... x-dead-letter-exchange` | Hàng đợi cùng tên đã được tạo trước đó **không có** DLQ | Xóa hàng đợi đó trong UI :15672 (hoặc `make nuke`); service tạo lại kèm DLQ |
+| Thông điệp nằm trong `<hàng đợi>.dlq` | Handler lỗi 3 lần liên tiếp (dữ liệu hỏng hoặc lỗi mã) | Xem log consumer; sửa rồi chuyển lại thông điệp bằng UI (Move messages) |
+| Testcontainers: `Timed out waiting for log output matching '.*Server startup complete.*'` | RabbitMQ khởi động khoảng 45 giây trên máy arm64, quá thời gian chờ mặc định | Dùng `TmcContainers.rabbit()` (platform/test-support), đã đặt chờ 3 phút |
+| user-qr (profile mặc định) trả 403 với `X-Subject` | Ngoài profile `local`, `inmem`, header dev không được tin (ADR-08) | Gửi `Authorization: Bearer <token>` lấy từ `POST :8087/auth/v1/login`, hoặc đặt `TMC_ALLOW_DEV_HEADERS=true` khi phát triển |
 
-**Ghi nhớ:** mọi thứ cần Docker **chưa được kiểm chứng** khi tạo scaffold (`docs/architecture/implementation-notes.md` mục 6). Gặp lỗi ở đó là việc của story D-01, B-01, B-02, C-01, A-01: ghi vào issue của story, kèm lệnh và nhật ký.
+### Kết quả D-01 (16/11/2026, macOS arm64, Docker đang chạy)
+
+Đã làm thật, theo thứ tự:
+
+1. `docker ps`: 4 container `tmc-postgres-edge`, `tmc-postgres-central`, `tmc-redis`, `tmc-rabbitmq` đều healthy.
+2. Container edge có từ trước nên **không có** `gate_store`. Đã tạo bằng `docker exec -i tmc-postgres-edge psql -U postgres < docker/init/edge/02-gate-store.sql` (CREATE ROLE, CREATE DATABASE thành công).
+3. `./gradlew :services:<x>:bootJar` cho 7 service, chạy mỗi jar ở **profile mặc định** (gate-station: `default,gate-store`) nối vào hạ tầng thật: cả 7 in `Started ...Application` trong 15 đến 17 giây.
+4. Thử đầu-cuối trên stack đó: `POST :8087/auth/v1/login` (nv001) trả token; `POST :8083/self-service/v1/devices` với `Authorization: Bearer` trả **201** (user-qr lấy JWKS qua mạng từ identity); cùng request với `X-Subject` trả **403**; `GET :8083/internal/v1/sync-bundle` có 5 nhân viên; gate-station ghi log `employee directory: 5 employees updated from the sync bundle`; Flyway đã áp V1, V2 ở `user_qr` và V1 ở `gate_store`; RabbitMQ có 4 binding trên `tmc.events`; một `identity.AuditRecorded` phát qua API quản trị được route (`routed: true`) và audit-admin ghi một dòng `processed_messages`.
+5. `make local-up` (nay 5 tiến trình, có identity) rồi 3 demo `online`, `offline`, `timeout`: đều `demo passed`.
+6. `./gradlew integrationTest`: số liệu ở `docs/handover/_decoupling-changelog.md` mục 3.
+
+Lỗi gặp và đã sửa: RabbitMQ Testcontainers quá thời gian chờ (nâng lên 3 phút); hàng đợi `autoDelete` biến mất sau lần `receive` đầu trong test (đổi sang không tự xóa); thiếu `gate_store` trên container cũ (tạo tay như trên).
+
+**Chưa làm:** dừng và bật lại RabbitMQ giữa lúc đang phát (B-02); chạy 3 demo trên stack Docker đầy đủ (demo hiện chạy trên profile `local`).
 
 ## Portal
 

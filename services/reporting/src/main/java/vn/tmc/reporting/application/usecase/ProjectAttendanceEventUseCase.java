@@ -9,8 +9,9 @@ import vn.tmc.reporting.domain.Presence;
 /**
  * Updates the presence read model from AttendanceConfirmed (ADR-10). Wrapped by IdempotentConsumer
  * so a redelivered message is a no-op; the version check also protects against out-of-order
- * delivery. TODO Team D: AttendanceCorrected, dashboard aggregates (FR-24, FR-25), export (FR-28),
- * fraud rules.
+ * delivery. AttendanceCorrected carries the full corrected values and an aggregateVersion higher
+ * than the original's (AsyncAPI), so it goes through the same "newer wins" rule. TODO Team D:
+ * dashboard aggregates (FR-24, FR-25), export (FR-28), fraud rules.
  */
 public class ProjectAttendanceEventUseCase {
   private final IPresenceRepository presences;
@@ -20,7 +21,8 @@ public class ProjectAttendanceEventUseCase {
   }
 
   public void handle(EventEnvelope event) {
-    if (!"AttendanceConfirmed".equals(event.eventType())) {
+    if (!"AttendanceConfirmed".equals(event.eventType())
+        && !"AttendanceCorrected".equals(event.eventType())) {
       return; // other event types are not projected yet
     }
     var employee = event.payload().get("employeeUuid");

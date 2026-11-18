@@ -142,8 +142,40 @@ class ProjectionTest {
   @Test
   void should_build_a_group_attendance_report_within_the_role_scope() {}
 
-  @Disabled(
-      "TODO Team D (document.md 12.6): AttendanceCorrected supersedes the original in the read model")
   @Test
-  void should_apply_a_correction_event_on_top_of_the_original() {}
+  void should_apply_a_correction_event_on_top_of_the_original() {
+    var original = confirmed("ENTRY", 5, "2026-11-09T06:45:00Z");
+    projection.handle(original);
+    // HR: that pass was actually an exit (revision 1, aggregateVersion = 5 + 1)
+    var correction =
+        new EventEnvelope(
+            Ids.uuidV7(),
+            "AttendanceCorrected",
+            1,
+            original.eventId(),
+            6,
+            Instant.parse("2026-11-09T09:00:00Z"),
+            "c",
+            "attendance-edge",
+            "BD",
+            "BD-GATE-01",
+            Map.of(
+                "status",
+                "CORRECTED",
+                "originalAttemptId",
+                original.eventId().toString(),
+                "revision",
+                1,
+                "employeeUuid",
+                employee.toString(),
+                "direction",
+                "EXIT",
+                "scannedAt",
+                "2026-11-09T06:45:00Z"));
+
+    projection.handle(correction);
+    projection.handle(original); // a late redelivery of the original must not undo it
+
+    assertThat(repo.find(employee, "BD").orElseThrow().direction()).isEqualTo("EXIT");
+  }
 }

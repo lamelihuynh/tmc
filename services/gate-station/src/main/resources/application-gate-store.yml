@@ -1,0 +1,9 @@
+# Profile "gate-store" (ADR-14): gate-station's own PostgreSQL database on the edge node.
+# Combine with the default profile (Redis) or with "local": SPRING_PROFILES_ACTIVE=local,gate-store
+# Database and login come from docker/init/edge/02-gate-store.sql.
+tmc:
+  gate:
+    store:
+      url: ${GATE_STORE_DB_URL:jdbc:postgresql://localhost:5432/gate_store}
+      username: ${GATE_STORE_DB_USER:gatestation}
+      password: ${GATE_STORE_DB_PASSWORD:gatestation}

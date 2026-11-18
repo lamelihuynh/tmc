@@ -2,13 +2,22 @@
 
 Người chịu trách nhiệm: **lead Team D**. Làm theo thứ tự, đánh dấu từng mục, **không đánh dấu mục chưa kiểm tra thật**.
 
-## T-5 ngày: đóng băng mã (mốc M-4)
+Mốc thời gian tính theo ngày nộp **26/11/2026** (T). Đóng băng mã 23:00 ngày 24/11 (T-2); lịch đầy đủ ở [`docs/handover/01-ke-hoach.md`](../handover/01-ke-hoach.md).
 
-- [ ] Mọi story mức `B` trong `docs/team/WORK-BREAKDOWN.md` xong, hoặc có quyết định cắt được ghi trong `MEETING-CADENCE.md`
+## T-3 ngày (23/11): tích hợp đầy đủ (K2)
+
+- [ ] Mọi story mức `B` trong `docs/team/WORK-BREAKDOWN.md` mục 4 đã vào `main`, hoặc có quyết định cắt được ghi trong `MEETING-CADENCE.md`
+- [ ] Kết quả kiểm tích hợp I-4 đến I-7 đã ghi (kể cả "chưa kiểm"), để báo cáo không khẳng định điều chưa chạy
+- [ ] Số đo A-09 đã nằm trong `docs/report/`
+
+## T-2 ngày (24/11, 23:00): đóng băng mã
+
 - [ ] `@Disabled` còn lại đều thuộc mức `N` hoặc `T`, và được liệt kê trong báo cáo ở mục "Hạn chế"
 - [ ] Từ giờ chỉ nhận PR sửa lỗi và tài liệu
+- [ ] CI trên GitHub xanh ở commit đóng băng (5 job: `build`, `employee-app`, `portal`, `integration`, `demo`)
+- [ ] Tổng duyệt demo lần 1 trên commit đó; bản cuối phần báo cáo của Team A, B, C đã vào `docs/report/`
 
-## T-3 ngày: kiểm chứng trên máy sạch
+## T-2 đến T-1 ngày (tối 24/11 đến sáng 25/11): kiểm chứng trên máy sạch
 
 Làm trên một máy (hoặc thư mục) **chưa từng build repo**, theo đúng `docs/runbook/local-setup.md`.
 
@@ -18,10 +27,10 @@ Làm trên một máy (hoặc thư mục) **chưa từng build repo**, theo đú
 - [ ] Chạy 3 demo lại với stack Docker đầy đủ
 - [ ] `cd apps/web-portal && npm ci && npm run lint && npm test && npm run build` xanh
 - [ ] CI trên GitHub xanh ở commit sẽ gắn thẻ
-- [ ] Số liệu thật: số test (tổng và bỏ qua), kết quả A-09 (p95, p99, số lượt vượt 2 giây) nếu đã đo, độ phủ nếu đã đo
+- [ ] Số liệu thật: số test (tổng và bỏ qua; mốc 16/11 là 209 test đơn vị, 10 bỏ qua, 27 test tích hợp), kết quả A-09 (p95, p99, số lượt vượt 2 giây) nếu đã đo, độ phủ nếu đã đo
 - [ ] Chụp ảnh hoặc lưu đầu ra: `make build`, 3 demo, `make integration`
 
-## T-2 ngày: báo cáo
+## T-1 ngày (25/11): báo cáo (D-12)
 
 - [ ] Có đủ các phần theo `docs/team/WORK-BREAKDOWN.md` mục 8
 - [ ] **Task 1:** mô tả bối cảnh, yêu cầu chức năng và phi chức năng, đặc tính kiến trúc, so sánh và chọn kiểu kiến trúc, các bước tạo kiến trúc logic và vật lý, view module, view C&C, view phân bổ, quyết định kiến trúc, nguyên lý thiết kế
@@ -32,11 +41,11 @@ Làm trên một máy (hoặc thư mục) **chưa từng build repo**, theo đú
 - [ ] Mọi khẳng định về hành vi trỏ tới **một test hoặc một kịch bản demo**
 - [ ] `docs/document.md` đã sửa theo `docs/adr/README.md` mục 3 (FR-19, NFR-05, NFR-09, UC-07, UC-08, AC-03, AC-04, component, sequence, deployment, API kiosk, ma trận truy vết)
 - [ ] Hai lỗi của M1 đã sửa: header API HR (đang dùng nhầm token và ghi chú của Turnstile) và mô tả dòng `manual-open` (đang trùng mô tả heartbeat), thành phần điều phối (mục 15.2 so với mục 13)
-- [ ] ADR-11, 12, 13 đã chuyển sang **Accepted** hoặc ghi rõ lý do còn Proposed; chỗ lệch giữa ADR và mã đã quyết định xong (`implementation-notes.md` mục 1)
+- [ ] ADR-11 đến ADR-15 ở trạng thái **Accepted** (đã chuyển ngày 16/11, kiểm lại trước khi nộp); chỗ lệch giữa ADR và mã đã quyết định xong (`implementation-notes.md` mục 1)
 - [ ] Mục "Hạn chế và việc tiếp theo" đúng với `implementation-notes.md` mục 3 đến 7, **không** khẳng định điều chưa đo (mục 7)
 - [ ] Hình có số và chú thích, danh mục hình, tài liệu tham khảo; kiểm tra chính tả; xuất PDF; không còn dấu `TODO` hay `<điền>`
 
-## T-1 ngày: kho mã
+## T-1 ngày (25/11, tối): kho mã
 
 - [ ] `README.md` ở gốc cho người lạ: mục tiêu, kiến trúc, cách chạy, URL tài liệu
 - [ ] Không có bí mật, khóa thật, dữ liệu cá nhân thật, tệp `.db`, `.local/`, `node_modules/`, `build/` trong repo (`git ls-files | grep -E '\.db$|\.pem$|\.env$'` rỗng)
@@ -44,7 +53,17 @@ Làm trên một máy (hoặc thư mục) **chưa từng build repo**, theo đú
 - [ ] Repo ở chế độ cho giảng viên truy cập được (công khai hoặc đã mời)
 - [ ] Gắn thẻ `m2-submission` vào commit đã kiểm chứng
 
-## Ngày nộp
+### Việc còn mở trước khi bật bảo vệ nhánh (TODO, chưa làm)
+
+`CODEOWNERS` vẫn dùng handle giữ chỗ `@REPLACE-ME-team-a` ... `@REPLACE-ME-team-d`. Không tự đặt handle: chỉ người có
+tài khoản GitHub thật của từng team mới điền được.
+
+- [ ] Lead mỗi team gửi tài khoản GitHub (hoặc tạo team `@<org>/team-x`) cho lead Team D
+- [ ] Thay 4 handle giữ chỗ trong `CODEOWNERS` (team A, B, C, D) và các dòng dùng chung `/platform/*`, `/docs/api/`, `/docs/adr/`
+- [ ] Mở một PR thử: GitHub không báo "CODEOWNERS có lỗi" ở tab Files
+- [ ] Sau đó mới bật "Require review from Code Owners" và chọn 5 job CI bắt buộc (build, employee-app, portal, integration, demo)
+
+## Ngày nộp (26/11, trước 23:00)
 
 - [ ] Mở URL GitHub trong cửa sổ ẩn danh (hoặc tài khoản khác) để chắc nó truy cập được
 - [ ] Nộp trên LMS: **báo cáo chi tiết (PDF) chứa URL GitHub** (đề bài M2, mục Submission Instructions)

@@ -61,8 +61,9 @@ public class UseCaseConfig {
   }
 
   @Bean
-  IAttendanceQuery attendanceQuery(IAttemptRepository attempts) {
-    return new AttendanceQueryService(attempts);
+  IAttendanceQuery attendanceQuery(
+      IAttemptRepository attempts, IAttendanceTransactionRepository transactions) {
+    return new AttendanceQueryService(attempts, transactions);
   }
 
   @Bean

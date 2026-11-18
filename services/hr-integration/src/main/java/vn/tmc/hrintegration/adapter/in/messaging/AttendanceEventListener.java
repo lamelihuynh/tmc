@@ -15,39 +15,48 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import vn.tmc.platform.kernel.EventEnvelope;
 import vn.tmc.platform.messaging.IdempotentConsumer;
+import vn.tmc.platform.messaging.TmcExchange;
 
 /**
  * Own subscription for HR Integration. Only AttendanceConfirmed and AttendanceCorrected are payroll
- * data. NOT exercised by automated tests (needs RabbitMQ). TODO Team D: DLQ, retry, JDBC dedupe
- * store.
+ * data. Exchange {@code tmc.events}, routing keys {@code <source>.<EventType>} (ADR-15). A message
+ * that still fails after the listener retries goes to {@value #DLQ} instead of looping. Off on the
+ * inmem and local profiles (no broker). Verified against RabbitMQ by HrAttendanceListenerIT. TODO
+ * Team D: alerting on the DLQ.
  */
 @Configuration
-@Profile("!inmem")
+@Profile("!inmem & !local")
 class HrQueueConfig {
   static final String QUEUE = "tmc.hr.attendance";
+  static final String DLQ = QUEUE + ".dlq";
 
   @Bean
-  TopicExchange attendanceExchange() {
-    return new TopicExchange("tmc.attendance.events", true, false);
+  TopicExchange tmcEvents() {
+    return new TopicExchange(TmcExchange.NAME, true, false);
   }
 
   @Bean
-  Queue hrQueue() {
-    return QueueBuilder.durable(QUEUE).build();
+  Queue hrintegrationQueue() {
+    return QueueBuilder.durable(QUEUE).deadLetterExchange("").deadLetterRoutingKey(DLQ).build();
   }
 
   @Bean
-  Binding hrConfirmedBinding(Queue hrQueue, TopicExchange attendanceExchange) {
-    return BindingBuilder.bind(hrQueue)
-        .to(attendanceExchange)
-        .with("attendance.AttendanceConfirmed");
+  Queue hrintegrationDeadLetterQueue() {
+    return QueueBuilder.durable(DLQ).build();
   }
 
   @Bean
-  Binding hrCorrectedBinding(Queue hrQueue, TopicExchange attendanceExchange) {
-    return BindingBuilder.bind(hrQueue)
-        .to(attendanceExchange)
-        .with("attendance.AttendanceCorrected");
+  Binding hrConfirmedBinding(Queue hrintegrationQueue, TopicExchange tmcEvents) {
+    return BindingBuilder.bind(hrintegrationQueue)
+        .to(tmcEvents)
+        .with(TmcExchange.routingKey(TmcExchange.ATTENDANCE, "AttendanceConfirmed"));
+  }
+
+  @Bean
+  Binding hrCorrectedBinding(Queue hrintegrationQueue, TopicExchange tmcEvents) {
+    return BindingBuilder.bind(hrintegrationQueue)
+        .to(tmcEvents)
+        .with(TmcExchange.routingKey(TmcExchange.ATTENDANCE, "AttendanceCorrected"));
   }
 
   @Bean
@@ -57,7 +66,7 @@ class HrQueueConfig {
 }
 
 @Component
-@Profile("!inmem")
+@Profile("!inmem & !local")
 class HrAttendanceListener {
   private final IdempotentConsumer consumer;
 

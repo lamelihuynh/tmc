@@ -67,6 +67,43 @@ class InternalApiFlowTest {
   }
 
   @Test
+  void should_expose_direction_on_the_attempt_and_the_last_counted_pass_of_an_employee()
+      throws Exception {
+    var id = UUID.randomUUID();
+    var employee = UUID.randomUUID();
+    var body =
+        """
+        {"attemptId":"%s","employeeUuid":"%s","gateId":"BD-GATE-01","factoryCode":"BD",
+         "direction":"ENTRY","jti":"jti-last-1","scannedAt":"2026-11-09T06:45:00Z"}
+        """
+            .formatted(id, employee);
+    mvc.perform(post("/internal/v1/attempts").contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(jsonPath("$.employeeUuid").value(employee.toString()))
+        .andExpect(jsonPath("$.direction").value("ENTRY"));
+
+    mvc.perform(get("/internal/v1/employees/{e}/last-direction", employee))
+        .andExpect(status().isNotFound()); // reserved is not a counted pass
+
+    mvc.perform(post("/internal/v1/attempts/{id}/gate-commanded", id));
+    mvc.perform(
+        post("/internal/v1/attempts/{id}/gate-result", id)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"result\":\"OPENED\"}"));
+
+    mvc.perform(
+            get("/internal/v1/employees/{e}/last-direction", employee)
+                .param("before", "2026-11-09T07:00:00Z"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.direction").value("ENTRY"))
+        .andExpect(jsonPath("$.occurredAt").value("2026-11-09T06:45:00Z"))
+        .andExpect(jsonPath("$.factoryCode").value("BD"));
+    mvc.perform(
+            get("/internal/v1/employees/{e}/last-direction", employee)
+                .param("before", "2026-11-09T06:45:00Z"))
+        .andExpect(status().isNotFound()); // strictly before
+  }
+
+  @Test
   void should_return_404_for_an_unknown_attempt() throws Exception {
     mvc.perform(post("/internal/v1/attempts/{id}/gate-commanded", UUID.randomUUID()))
         .andExpect(status().isNotFound());

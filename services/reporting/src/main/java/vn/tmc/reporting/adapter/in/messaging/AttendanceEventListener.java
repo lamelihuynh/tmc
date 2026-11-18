@@ -15,32 +15,41 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import vn.tmc.platform.kernel.EventEnvelope;
 import vn.tmc.platform.messaging.IdempotentConsumer;
+import vn.tmc.platform.messaging.TmcExchange;
 
 /**
- * Own subscription to the AttendanceEvents exchange (document.md 12.5: one subscription per
- * consumer). NOT exercised by automated tests (needs RabbitMQ). TODO Team D: dead-letter queue,
- * retry policy, and a database-backed ProcessedMessageStore updated in the same transaction as the
- * read model.
+ * Own subscription to every attendance event (document.md 12.5: one queue per consumer). Exchange
+ * {@code tmc.events}, routing keys {@code <source>.<EventType>} (ADR-15). A message that still
+ * fails after the listener retries goes to {@value #DLQ} instead of looping. Off on the inmem and
+ * local profiles (no broker). Verified against RabbitMQ by AttendanceEventListenerIT. TODO Team D:
+ * alerting on the DLQ.
  */
 @Configuration
-@Profile("!inmem")
+@Profile("!inmem & !local")
 class AttendanceQueueConfig {
-  static final String EXCHANGE = "tmc.attendance.events";
   static final String QUEUE = "tmc.reporting.attendance";
+  static final String DLQ = QUEUE + ".dlq";
 
   @Bean
-  TopicExchange attendanceExchange() {
-    return new TopicExchange(EXCHANGE, true, false);
+  TopicExchange tmcEvents() {
+    return new TopicExchange(TmcExchange.NAME, true, false);
   }
 
   @Bean
   Queue reportingQueue() {
-    return QueueBuilder.durable(QUEUE).build();
+    return QueueBuilder.durable(QUEUE).deadLetterExchange("").deadLetterRoutingKey(DLQ).build();
   }
 
   @Bean
-  Binding reportingBinding(Queue reportingQueue, TopicExchange attendanceExchange) {
-    return BindingBuilder.bind(reportingQueue).to(attendanceExchange).with("attendance.*");
+  Queue reportingDeadLetterQueue() {
+    return QueueBuilder.durable(DLQ).build();
+  }
+
+  @Bean
+  Binding reportingBinding(Queue reportingQueue, TopicExchange tmcEvents) {
+    return BindingBuilder.bind(reportingQueue)
+        .to(tmcEvents)
+        .with(TmcExchange.everyEventOf(TmcExchange.ATTENDANCE));
   }
 
   @Bean
@@ -50,7 +59,7 @@ class AttendanceQueueConfig {
 }
 
 @Component
-@Profile("!inmem")
+@Profile("!inmem & !local")
 class AttendanceEventListener {
   private final IdempotentConsumer consumer;
 

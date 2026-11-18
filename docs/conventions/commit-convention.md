@@ -42,7 +42,7 @@ chore/d/D-02-ci-integration-job
 
 ### `scope` (chọn một)
 
-`gate-station`, `attendance`, `user-qr`, `identity`, `reporting`, `hr-integration`, `audit-admin`, `turnstile-sim`, `kiosk-sim`, `device-sim`, `web-portal`, `platform`, `docker`, `scripts`, `adr`, `api`, `team`, `report`.
+`gate-station`, `attendance`, `user-qr`, `identity`, `reporting`, `hr-integration`, `audit-admin`, `turnstile-sim`, `kiosk-sim`, `device-sim`, `web-portal`, `employee-app`, `platform`, `docker`, `scripts`, `adr`, `api`, `team`, `report`.
 
 Thay đổi chạm nhiều scope: dùng scope của phần **chính**, hoặc bỏ scope nếu thật sự xuyên suốt. Nếu cần ghi nhiều scope, bạn đang commit quá to: tách ra.
 

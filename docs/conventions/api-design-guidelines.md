@@ -73,7 +73,7 @@ Phản hồi lỗi không chứa chi tiết nội bộ: `{ "error": "FORBIDDEN" 
 
 ## Sự kiện (AsyncAPI, `docs/api/attendance-events.asyncapi.yaml`)
 
-- Exchange `tmc.attendance.events` (topic), khóa định tuyến `attendance.<EventType>`. Mỗi consumer có **hàng đợi riêng** (`tmc.reporting.attendance`, `tmc.hr.attendance`, `tmc.audit.events`).
+- Exchange dùng chung `tmc.events` (topic, ADR-15), khóa định tuyến `<nguồn>.<EventType>` (`attendance.AttendanceConfirmed`, `user-qr.AuditRecorded`...). Hằng số ở `platform/messaging/TmcExchange`. Mỗi consumer có **hàng đợi riêng** (`tmc.reporting.attendance`, `tmc.hr.attendance`, `tmc.audit.events`) và DLQ `<tên>.dlq`.
 - Phong bì `EventEnvelope`: `messageId` (một thông điệp, giữ nguyên khi gửi lại), `eventType`, `schemaVersion`, `eventId` (= `attempt_id`, định danh giao dịch), `aggregateVersion`, `occurredAt`, `correlationId`, `source`, `factoryCode`, `gateId`, `payload`.
 - Phát **ít nhất một lần**, không thứ tự tuyệt đối. Consumer **phải** khử trùng theo `(consumer, messageId)` và **không** áp phiên bản cũ lên trạng thái mới (`aggregateVersion`).
 - `payload` chỉ chứa dữ liệu tối thiểu, UUID nội bộ, **không** token, không `jti`, không tên (ADR-09).

@@ -1,6 +1,6 @@
 # ADR-12: QR động có chữ ký, ràng buộc thiết bị và chống replay; loại bỏ QR tĩnh
 
-| Trạng thái | Proposed (đề xuất cho M2, chờ nhóm duyệt) |
+| Trạng thái | Accepted (16/11/2026), xem "Ghi chú khi chấp thuận" |
 | --- | --- |
 | Ngày | 06/11/2026 |
 | Vấn đề giải quyết | I-2: QR tĩnh bị lộ, kẻ xấu vào trái phép hoặc gian lận chấm công |
@@ -89,6 +89,17 @@ Khi mở cổng thành công, kiosk hiển thị **mã nhân viên rút gọn v�
 (–) Phụ thuộc đồng hồ điện thoại; cần `clock_skew` và đồng bộ thời gian.
 (–) Nhân viên đổi điện thoại phải đăng ký lại; cần quy trình hỗ trợ.
 (–) Bỏ QR qua email làm giảm tiện lợi cho nhân viên chưa cài app; đường lùi là UC-06.
+
+## Ghi chú khi chấp thuận (16/11/2026)
+
+Chấp thuận cùng các điều chỉnh để khớp mã (`implementation-notes.md` mục 1, điểm 3, 4, 5): kiểm tra một lần dùng nằm ở
+`ITokenReservation` của Gate Station (Redis `SET NX`), không phải `ITokenReplayStore` của User/QR; thiết bị bị thu hồi trả
+`DEVICE_REVOKED`; token có `exp - iat > 60 s` bị từ chối. Chính sách dùng chung ghi ở `docs/api/fixtures/qr-token-policy.json`.
+
+**Hệ quả và đánh đổi bổ sung:** `RedisTokenReservation` đã chạy thật với Redis (`RedisAdaptersIT`: đúng một người thắng trong
+32 lời gọi đồng thời, token đã dùng không bị nhả). Đổi lại, tính một-lần-dùng phụ thuộc Redis của Edge có AOF; mất Redis thì
+mất khối chặn cho tới khi token hết hạn (tối đa `exp + 60 s`). Kiosk offline giờ nhận được danh bạ đủ điều kiện qua gói đồng bộ
+nhưng chưa dùng nó để từ chối (việc của kiosk, D-xx).
 
 ## Kiểm chứng tuân thủ (Compliance)
 

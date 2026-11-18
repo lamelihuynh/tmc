@@ -1,6 +1,6 @@
 # ADR-13: Chốt thành phần điều phối luồng quét tại biên (Edge Access Orchestrator)
 
-| Trạng thái | Proposed (đề xuất cho M2, chờ nhóm duyệt) |
+| Trạng thái | Accepted (16/11/2026), xem "Ghi chú khi chấp thuận" |
 | --- | --- |
 | Ngày | 07/11/2026 |
 | Vấn đề giải quyết | Mâu thuẫn nội bộ trong M1; cần một tên và một ranh giới rõ trước khi code Task 2 |
@@ -82,6 +82,16 @@ Quy tắc phụ thuộc: Application chỉ phụ thuộc Domain và port; adapte
 (+) Code Task 2 có cấu trúc thư mục rõ: `gate-station/{domain,application,adapters}`, `attendance/{...}`, `user-qr/{...}`.
 (–) Phải sửa mục 15.2 và hình 15.2.1 trong báo cáo.
 (–) Tại Edge có ba tiến trình logic (Gate Station, Attendance, QR Verifier); trong Task 2 có thể triển khai cùng một tiến trình nhưng tách module, và phải ghi rõ điều đó trong README.
+
+## Ghi chú khi chấp thuận (16/11/2026)
+
+Chấp thuận cùng điều chỉnh ở `implementation-notes.md` mục 1, điểm 3 và 6: QR Verifier hiện là endpoint
+`/internal/v1/qr/verify` của chính `user-qr`, được mô hình hóa như instance tại Edge; hợp đồng không đổi khi tách ra sau này.
+
+**Hệ quả và đánh đổi bổ sung:** Gate Station có cơ sở dữ liệu riêng `gate_store` (ADR-14) và danh bạ nhân viên làm mới từ gói
+đồng bộ của User/QR (`SyncEmployeeDirectoryUseCase`). Đổi lại, Gate Station phụ thuộc thêm một nguồn dữ liệu: khi User/QR không
+trả lời thì danh bạ giữ bản cuối cùng, nghĩa là thay đổi trạng thái nhân viên có thể trễ tối đa một chu kỳ đồng bộ (30 giây) cộng
+thời gian User/QR không truy cập được.
 
 ## Kiểm chứng tuân thủ (Compliance)
 

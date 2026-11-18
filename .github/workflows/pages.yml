@@ -1,0 +1,50 @@
+# Xuất bản lịch bàn giao tương tác (docs/handover/lich-ban-giao.html) lên GitHub Pages, để mọi người
+# mở bằng một đường dẫn thay vì thấy mã HTML trong trình xem tệp của GitHub.
+# Đây là xuất bản TÀI LIỆU, không phải triển khai sản phẩm: sản phẩm chỉ chạy local.
+#
+# Bật một lần (người quản trị repo):
+#   1. Settings > Pages > Build and deployment > Source: chọn "GitHub Actions".
+#   2. Settings > Secrets and variables > Actions > Variables: tạo biến PAGES_ENABLED = true.
+# Chưa bật thì workflow này tự bỏ qua, không làm đỏ nhánh main.
+# Sau khi bật, trang nằm ở: https://lamelihuynh.github.io/tmc/
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/handover/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: publish
+    if: vars.PAGES_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble the site
+        run: |
+          mkdir _site
+          cp docs/handover/lich-ban-giao.html _site/index.html
+          cp docs/handover/gantt.png _site/gantt.png
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4

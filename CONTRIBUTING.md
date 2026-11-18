@@ -49,7 +49,7 @@ Trong GitHub, Settings → Branches → rule cho `main`:
 
 - Require a pull request before merging; **2 approvals**; dismiss stale approvals khi có commit mới
 - Require review from Code Owners (sau khi đã điền handle thật trong `CODEOWNERS`)
-- Require status checks: `build`, `portal` (thêm `integration` sau khi D-01 xong)
+- Require status checks: `build`, `employee-app`, `portal`, `integration`, `demo` (đúng tên 5 job trong `.github/workflows/ci.yml`)
 - Require branches to be up to date; require conversation resolution
 - Chỉ cho phép *Squash merge*; không cho đẩy thẳng, không cho force push
 - Tự động xóa nhánh sau khi hợp nhất

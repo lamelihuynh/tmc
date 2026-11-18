@@ -198,6 +198,18 @@ components:
               employeeUuid: { type: string }
               publicKeyX509Base64: { type: string }
               revoked: { type: boolean }
+        employees:
+          type: array
+          description: |
+            Danh bạ đủ điều kiện (chuyển tiếp từ gói đồng bộ của User/QR). Kiosk có thể dùng để từ chối offline
+            nhân viên INACTIVE hoặc sai nhà máy (D-xx). Bên đọc PHẢI bỏ qua trường lạ.
+          items:
+            type: object
+            required: [employeeUuid, status, factories]
+            properties:
+              employeeUuid: { type: string, format: uuid }
+              status: { type: string, enum: [ACTIVE, INACTIVE] }
+              factories: { type: array, items: { type: string } }
     ManualResult:
       type: object
       properties:
