@@ -8,8 +8,8 @@ import org.slf4j.LoggerFactory;
 import vn.tmc.userqr.application.port.out.IAuditLog;
 
 /**
- * Writes audit facts to the log and keeps them in memory so tests can assert on them. TODO Team C
- * (C-08): replace with an outbox that delivers to audit-admin.
+ * Writes audit facts to the log and keeps them in memory so tests can assert on them. Used on the
+ * inmem and local profiles; the default profile uses {@code OutboxAuditLog} (C-08).
  */
 public class LoggingAuditLog implements IAuditLog {
   private static final Logger LOG = LoggerFactory.getLogger("audit.user-qr");

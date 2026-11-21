@@ -3,6 +3,11 @@ server:
 spring:
   application:
     name: identity
+  # C-11: durable outbox for identity.AuditRecorded (database created by docker/init/central)
+  datasource:
+    url: ${IDENTITY_DB_URL:jdbc:postgresql://localhost:5433/identity}
+    username: ${IDENTITY_DB_USER:identity}
+    password: ${IDENTITY_DB_PASSWORD:identity}
   rabbitmq:
     host: ${RABBIT_HOST:localhost}
     port: ${RABBIT_PORT:5672}
@@ -14,3 +19,6 @@ tmc:
     jwt:
       # private EC P-256 JWK (JSON). Empty: a key generated at start-up (dev only).
       private-jwk: ${IDENTITY_JWT_PRIVATE_JWK:}
+      # C-12 key rotation: public JWK of the key being rotated out (published in the JWKS so its
+      # tokens stay valid until they expire). Remove it 20 minutes after the switch.
+      previous-public-jwk: ${IDENTITY_JWT_PREVIOUS_PUBLIC_JWK:}

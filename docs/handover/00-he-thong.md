@@ -70,7 +70,7 @@ flowchart LR
 | `gate-station` | 8081 | A | Điều phối một lượt quét: gọi xác thực QR, áp quy tắc ra vào, giữ chỗ token, ra lệnh mở cổng | Trạng thái anti-passback, token đã dùng (Redis); danh mục cổng và outbox audit trong database `gate_store` (ADR-14, profile `gate-store`; bảng `gates` dùng từ A-04) |
 | `attendance` | 8082 | B | Sổ ghi mọi lượt quét, máy trạng thái của lượt quét, hiệu chỉnh, phát sự kiện qua outbox | `access_attempts`, `attendance_transactions`, `attendance_corrections`, `outbox_events` (PostgreSQL) |
 | `user-qr` | 8083 | C | Giữ khóa công khai của từng điện thoại, xác thực chữ ký và thời hạn của QR, gói đồng bộ có danh bạ nhân viên | `devices`, `outbox_events` (PostgreSQL); danh bạ nhân viên đang trong bộ nhớ (C-02 chuyển sang bảng) |
-| `identity` | 8087 | C | Đăng nhập, khóa tài khoản sau 5 lần sai, MFA, cấp JWT ES256, JWKS | Tài khoản và outbox trong bộ nhớ (C-11 thêm database `identity`) |
+| `identity` | 8087 | C | Đăng nhập, khóa tài khoản sau 5 lần sai, MFA, cấp JWT ES256, JWKS | Tài khoản trong bộ nhớ; outbox audit trong database `identity` (C-11, profile mặc định) |
 | `reporting` | 8084 | D | Ai đang ở trong nhà máy, báo cáo, quy tắc phát hiện gian lận | Read model hiện diện (bộ nhớ, D-04 chuyển PostgreSQL); `processed_messages` |
 | `hr-integration` | 8085 | D | Đẩy công sang HR/Payroll, theo dõi trạng thái đồng bộ | Nhật ký đồng bộ (bộ nhớ); `processed_messages` |
 | `audit-admin` | 8086 | D | Nhật ký kiểm toán chỉ thêm, không sửa, không xóa | Nhật ký (bộ nhớ, D-08 chuyển PostgreSQL); `processed_messages` |
