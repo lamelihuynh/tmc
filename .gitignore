@@ -8,6 +8,8 @@ hs_err_pid*
 
 # IDE
 .idea/
+# VS Code / Eclipse Java build output
+bin/
 *.iml
 .vscode/
 .DS_Store
