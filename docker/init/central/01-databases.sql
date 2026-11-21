@@ -1,5 +1,6 @@
 -- Central site databases: one per service, one login per service, no cross access (ADR-10).
--- Only user_qr is used by code today; the others are reserved so teams can add Flyway migrations.
+-- user_qr and identity (outbox, C-11) are used by code today; the others are reserved so teams can
+-- add Flyway migrations.
 CREATE ROLE userqr LOGIN PASSWORD 'userqr';
 CREATE DATABASE user_qr OWNER userqr;
 

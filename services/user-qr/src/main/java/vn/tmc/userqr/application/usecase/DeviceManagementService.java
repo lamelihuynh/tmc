@@ -14,20 +14,31 @@ import vn.tmc.platform.security.Role;
 import vn.tmc.userqr.application.port.in.IDeviceManagement;
 import vn.tmc.userqr.application.port.out.IAuditLog;
 import vn.tmc.userqr.application.port.out.IDeviceKeyRegistry;
+import vn.tmc.userqr.application.port.out.ITransactionRunner;
 import vn.tmc.userqr.domain.Device;
 
 /**
  * UC-02 and UC-07: device enrollment and revocation with server-side authorization and audit
- * (ADR-08).
+ * (ADR-08). Every device change and its audit row (outbox, C-08) run in one transaction: either
+ * both are stored or neither is. A refusal changes nothing, so its DENIED audit is written outside
+ * any transaction and survives the exception that follows.
  */
 public class DeviceManagementService implements IDeviceManagement {
   private final IDeviceKeyRegistry registry;
   private final IAuditLog audit;
+  private final ITransactionRunner tx;
   private final IClock clock;
 
+  /** Without a transaction: for unit tests on the in-memory adapters. */
   public DeviceManagementService(IDeviceKeyRegistry registry, IAuditLog audit, IClock clock) {
+    this(registry, audit, ITransactionRunner.none(), clock);
+  }
+
+  public DeviceManagementService(
+      IDeviceKeyRegistry registry, IAuditLog audit, ITransactionRunner tx, IClock clock) {
     this.registry = registry;
     this.audit = audit;
+    this.tx = tx;
     this.clock = clock;
   }
 
@@ -40,12 +51,17 @@ public class DeviceManagementService implements IDeviceManagement {
       throw new AccessDeniedException("an employee can only register their own device");
     }
     var key = decodeEcPublicKey(publicKeyX509Base64);
-    var now = clock.now();
-    registry.findActiveByEmployee(employeeUuid).ifPresent(old -> registry.save(old.revoke(now)));
-    var device = Device.register("dev-" + Ids.uuidV7(), employeeUuid, key, now);
-    registry.save(device);
-    audit.record("DEVICE_REGISTER", caller.subject(), device.deviceId(), "OK");
-    return new RegisteredDevice(device.deviceId());
+    return tx.inTransaction(
+        () -> {
+          var now = clock.now();
+          registry
+              .findActiveByEmployee(employeeUuid)
+              .ifPresent(old -> registry.save(old.revoke(now)));
+          var device = Device.register("dev-" + Ids.uuidV7(), employeeUuid, key, now);
+          registry.save(device);
+          audit.record("DEVICE_REGISTER", caller.subject(), device.deviceId(), "OK");
+          return new RegisteredDevice(device.deviceId());
+        });
   }
 
   @Override
@@ -57,20 +73,28 @@ public class DeviceManagementService implements IDeviceManagement {
       audit.record("DEVICE_REVOKE", caller.subject(), deviceId, "DENIED");
       throw new AccessDeniedException("device not found for caller");
     }
-    registry.save(device.revoke(clock.now()));
-    audit.record("DEVICE_REVOKE", caller.subject(), deviceId, "OK");
+    tx.inTransaction(
+        () -> {
+          registry.save(device.revoke(clock.now()));
+          audit.record("DEVICE_REVOKE", caller.subject(), deviceId, "OK");
+          return null;
+        });
   }
 
   @Override
   public void revokeForEmployee(Principal caller, UUID employeeUuid) {
     Rbac.requireRole(caller, Role.HR_STAFF, Role.SYSTEM_ADMIN);
-    registry
-        .findActiveByEmployee(employeeUuid)
-        .ifPresent(
-            d -> {
-              registry.save(d.revoke(clock.now()));
-              audit.record("DEVICE_REVOKE_BY_STAFF", caller.subject(), d.deviceId(), "OK");
-            });
+    tx.inTransaction(
+        () -> {
+          registry
+              .findActiveByEmployee(employeeUuid)
+              .ifPresent(
+                  d -> {
+                    registry.save(d.revoke(clock.now()));
+                    audit.record("DEVICE_REVOKE_BY_STAFF", caller.subject(), d.deviceId(), "OK");
+                  });
+          return null;
+        });
   }
 
   private static PublicKey decodeEcPublicKey(String base64) {
