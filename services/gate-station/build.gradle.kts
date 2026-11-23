@@ -21,6 +21,7 @@ dependencies {
     runtimeOnly("org.postgresql:postgresql")
 
     testImplementation(project(":platform:test-support"))
+    testImplementation(project(":simulators:turnstile-simulator"))
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation(libs.testcontainers.postgres)
 }
