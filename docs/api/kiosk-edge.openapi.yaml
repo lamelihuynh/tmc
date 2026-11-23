@@ -86,11 +86,10 @@ paths:
     post:
       summary: Bảo vệ mở cổng thủ công (UC-06). Lý do bắt buộc, ghi audit, không tự tính công
       operationId: manualOpen
+      security:
+        - bearerAuth: []
       parameters:
         - { name: gateId, in: path, required: true, schema: { type: string } }
-        - { name: X-Subject, in: header, required: true, schema: { type: string, format: uuid } }
-        - { name: X-Roles, in: header, required: true, schema: { type: string }, example: SECURITY_GUARD }
-        - { name: X-Scope-Gates, in: header, required: true, schema: { type: string }, example: "BD-GATE-01" }
       requestBody:
         required: true
         content:
@@ -107,7 +106,8 @@ paths:
           description: Kết quả (ALLOWED, DENIED, PENDING)
           content: { application/json: { schema: { $ref: "#/components/schemas/ManualResult" } } }
         "400": { description: Thiếu lý do hoặc cổng không tồn tại }
-        "403": { description: Không phải bảo vệ, hoặc cổng ngoài phạm vi được giao, hoặc chưa xác thực }
+        "401": { description: Thiếu Bearer hoặc token không hợp lệ/hết hạn }
+        "403": { description: Vai trò không được phép hoặc cổng ngoài phạm vi được giao }
   /internal/v1/attempts/{attemptId}/gate-observation:
     get:
       summary: "Nội bộ: cổng thực sự đã làm gì cho lượt này? (attendance dùng để đối soát GATE_UNKNOWN)"
@@ -124,8 +124,110 @@ paths:
                 type: object
                 properties:
                   observation: { type: string, enum: [OPENED, NOT_OPENED, UNDETERMINED] }
+  /admin/v1/gates:
+    get:
+      summary: Danh sách cổng (SYSTEM_ADMIN)
+      operationId: listGates
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Gate" }
+        "401": { description: Thiếu Bearer hoặc token không hợp lệ/hết hạn }
+        "403": { description: Caller không có vai trò SYSTEM_ADMIN }
+  /admin/v1/gates/{gateId}:
+    get:
+      summary: Đọc một cổng (SYSTEM_ADMIN)
+      operationId: findGate
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: gateId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Gate" }
+        "401": { description: Thiếu Bearer hoặc token không hợp lệ/hết hạn }
+        "403": { description: Caller không có vai trò SYSTEM_ADMIN }
+        "404": { description: Không có cổng }
+    put:
+      summary: Thêm hoặc sửa một cổng (SYSTEM_ADMIN)
+      operationId: upsertGate
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: gateId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GateUpsert" }
+      responses:
+        "200":
+          description: Cổng đã lưu
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Gate" }
+        "400": { description: Thiếu trường bắt buộc hoặc mode không hợp lệ }
+        "401": { description: Thiếu Bearer hoặc token không hợp lệ/hết hạn }
+        "403": { description: Caller không có vai trò SYSTEM_ADMIN }
+  /admin/v1/gates/{gateId}/maintenance:
+    patch:
+      summary: Bật hoặc tắt bảo trì một cổng (SYSTEM_ADMIN); có hiệu lực ở lượt quét kế tiếp
+      operationId: setGateMaintenance
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: gateId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MaintenanceUpdate" }
+      responses:
+        "200":
+          description: Cổng đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Gate" }
+        "401": { description: Thiếu Bearer hoặc token không hợp lệ/hết hạn }
+        "403": { description: Caller không có vai trò SYSTEM_ADMIN }
+        "404": { description: Không có cổng }
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
+    Gate:
+      type: object
+      properties:
+        gateId: { type: string }
+        factoryCode: { type: string }
+        hardwareGateId: { type: string }
+        mode: { type: string, enum: [ENTRY_ONLY, EXIT_ONLY, BIDIRECTIONAL] }
+        maintenance: { type: boolean }
+    GateUpsert:
+      type: object
+      required: [factoryCode, hardwareGateId, mode]
+      properties:
+        factoryCode: { type: string }
+        hardwareGateId: { type: string }
+        mode: { type: string, enum: [ENTRY_ONLY, EXIT_ONLY, BIDIRECTIONAL] }
+        maintenance: { type: boolean }
+    MaintenanceUpdate:
+      type: object
+      required: [maintenance]
+      properties:
+        maintenance: { type: boolean }
     Direction: { type: string, enum: [ENTRY, EXIT] }
     ReasonCode:
       type: string

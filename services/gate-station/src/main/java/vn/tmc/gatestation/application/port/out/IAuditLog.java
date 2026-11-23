@@ -4,7 +4,7 @@ import java.util.UUID;
 
 /**
  * Driven port: security-relevant actions at the gate (NFR-02), for example a manual open and its
- * reason. TODO: deliver to audit-admin through an outbox instead of the log.
+ * reason. Production writes AuditRecorded events to Gate Store's outbox.
  */
 public interface IAuditLog {
   void record(String action, UUID actor, String target, String detail);

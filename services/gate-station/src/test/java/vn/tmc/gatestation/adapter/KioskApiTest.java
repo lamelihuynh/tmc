@@ -215,7 +215,7 @@ class KioskApiTest {
             post("/security/v1/gates/BD-GATE-01/manual-open")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json))
-        .andExpect(status().isForbidden());
+        .andExpect(status().isUnauthorized());
   }
 
   @Test

@@ -27,3 +27,4 @@ docker/.env
 docs/images
 
 .local/
+.opencode

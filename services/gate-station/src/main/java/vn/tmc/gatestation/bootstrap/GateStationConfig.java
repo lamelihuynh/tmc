@@ -3,13 +3,16 @@ package vn.tmc.gatestation.bootstrap;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import vn.tmc.gatestation.adapter.out.inmem.InMemoryEmployeeDirectory;
 import vn.tmc.gatestation.adapter.out.inmem.InMemoryGateConfigRepository;
 import vn.tmc.gatestation.adapter.out.inmem.InMemoryHeartbeatStore;
 import vn.tmc.gatestation.adapter.out.inmem.LoggingAuditLog;
 import vn.tmc.gatestation.application.port.in.IGateAccess;
+import vn.tmc.gatestation.application.port.in.IGateManagement;
 import vn.tmc.gatestation.application.port.in.IGateManualAccess;
 import vn.tmc.gatestation.application.port.in.IGateObservation;
 import vn.tmc.gatestation.application.port.in.IKioskSupport;
@@ -24,6 +27,7 @@ import vn.tmc.gatestation.application.port.out.IKioskSyncSource;
 import vn.tmc.gatestation.application.port.out.IQRValidation;
 import vn.tmc.gatestation.application.port.out.ITokenReservation;
 import vn.tmc.gatestation.application.port.out.ITurnstileControlPort;
+import vn.tmc.gatestation.application.usecase.AdminGateService;
 import vn.tmc.gatestation.application.usecase.KioskSupportService;
 import vn.tmc.gatestation.application.usecase.ManualOpenUseCase;
 import vn.tmc.gatestation.application.usecase.ObserveGateUseCase;
@@ -36,6 +40,8 @@ import vn.tmc.gatestation.domain.policy.ActiveEmployeeRule;
 import vn.tmc.gatestation.domain.policy.AntiPassbackRule;
 import vn.tmc.gatestation.domain.policy.FactoryPermissionRule;
 import vn.tmc.platform.kernel.IClock;
+import vn.tmc.platform.security.PrincipalResolver;
+import vn.tmc.platform.security.jwt.JwtPrincipalVerifier;
 
 /**
  * Composition root of Gate Station. Rules are collected from the context: to add a rule, declare
@@ -47,6 +53,22 @@ public class GateStationConfig {
   @Bean
   IClock clock() {
     return IClock.system();
+  }
+
+  /** Resolves identity tokens; dev headers are enabled only by the local/inmem profiles. */
+  @Bean
+  PrincipalResolver principalResolver(
+      @Value("${tmc.security.jwks-url:}") String jwksUrl,
+      @Value("${tmc.security.jwks-json:}") String jwksJson,
+      @Value("${tmc.security.allow-dev-headers:false}") boolean allowDevHeaders,
+      IClock clock) {
+    JwtPrincipalVerifier verifier = null;
+    if (!jwksJson.isBlank()) {
+      verifier = JwtPrincipalVerifier.fromJwksJson(jwksJson, clock);
+    } else if (!jwksUrl.isBlank()) {
+      verifier = JwtPrincipalVerifier.fromJwksUrl(jwksUrl, clock);
+    }
+    return new PrincipalResolver(verifier, allowDevHeaders);
   }
 
   @Bean
@@ -93,10 +115,21 @@ public class GateStationConfig {
         Duration.ofSeconds(s.tokenBlockSeconds()));
   }
 
+  /**
+   * Seed catalog for profiles without a Gate Store; profile "gate-store" uses
+   * JdbcGateConfigRepository.
+   */
   @Bean
+  @Profile("!gate-store")
   IGateConfigRepository gateConfigRepository(GateProperties props) {
     return new InMemoryGateConfigRepository(
         props.gates().stream().map(GateProperties.Gate::toConfig).toList());
+  }
+
+  @Bean
+  @Profile("!gate-store")
+  IGateManagement gateManagement(IGateConfigRepository gates, IAuditLog audit) {
+    return new AdminGateService(gates, audit);
   }
 
   /** Seed from application.yml, refreshed from the sync bundle by EmployeeDirectorySyncJob. */
@@ -112,6 +145,7 @@ public class GateStationConfig {
   }
 
   @Bean
+  @Profile("(inmem | local) & !gate-store")
   IAuditLog auditLog() {
     return new LoggingAuditLog();
   }

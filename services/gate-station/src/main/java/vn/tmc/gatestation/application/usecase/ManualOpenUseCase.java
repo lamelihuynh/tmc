@@ -98,7 +98,6 @@ public class ManualOpenUseCase implements IGateManualAccess {
     return switch (result) {
       case OPENED -> {
         attendance.recordGateResult(attemptId, GateResult.OPENED, request.correlationId());
-        audit.record("MANUAL_OPEN_DONE", guard.subject(), request.gateId(), attemptId.toString());
         yield new ScanResult(attemptId, Outcome.ALLOWED, null, request.direction(), false);
       }
       case ERROR -> {

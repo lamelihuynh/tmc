@@ -24,4 +24,10 @@ public class InMemoryGateConfigRepository implements IGateConfigRepository {
   public List<GateConfig> all() {
     return List.copyOf(gates.values());
   }
+
+  @Override
+  public GateConfig upsert(GateConfig gate) {
+    gates.put(gate.gateId(), gate);
+    return gate;
+  }
 }
