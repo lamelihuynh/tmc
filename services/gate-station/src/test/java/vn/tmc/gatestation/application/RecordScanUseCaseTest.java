@@ -4,12 +4,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import vn.tmc.gatestation.adapter.out.inmem.InMemoryAntiPassbackStore;
 import vn.tmc.gatestation.adapter.out.simulated.SimulatedTurnstileAdapter.Fault;
 import vn.tmc.gatestation.application.port.in.IGateAccess.Outcome;
+import vn.tmc.gatestation.application.port.out.IAttendanceGateway.DenialRecord;
 import vn.tmc.gatestation.application.port.out.IAttendanceGateway.State;
+import vn.tmc.gatestation.application.port.out.ITokenReservation.Reservation;
 import vn.tmc.gatestation.application.port.out.ITurnstileControlPort.Trigger;
+import vn.tmc.gatestation.application.usecase.RecordScanUseCase;
+import vn.tmc.gatestation.application.usecase.ScanSettings;
 import vn.tmc.gatestation.domain.Direction;
+import vn.tmc.gatestation.domain.policy.AccessPolicyChain;
 import vn.tmc.gatestation.support.GateFixture;
 import vn.tmc.platform.kernel.ReasonCode;
 
@@ -109,6 +116,44 @@ class RecordScanUseCaseTest {
   }
 
   @Test
+  void should_restore_the_last_pass_from_attendance_when_the_fast_store_is_empty() {
+    f.token("a", GateFixture.E1, "jti-a");
+    assertThat(f.scan.scan(f.request("BD-GATE-01", "a")).outcome()).isEqualTo(Outcome.ALLOWED);
+    f.clock.advance(Duration.ofSeconds(1));
+    f.token("b", GateFixture.E1, "jti-b");
+    var coldStore = new InMemoryAntiPassbackStore(f.clock);
+    var coldScan =
+        new RecordScanUseCase(
+            f.gates,
+            f.qr,
+            f.employees,
+            AccessPolicyChain.standard(),
+            f.tokens,
+            coldStore,
+            f.attendance,
+            f.turnstile,
+            ScanSettings.defaults(),
+            f.clock);
+
+    var second = coldScan.scan(f.request("BD-GATE-01", "b"));
+
+    assertThat(second.reason()).isEqualTo(ReasonCode.ANTI_PASSBACK_VIOLATION);
+    assertThat(coldStore.last(GateFixture.E1).orElseThrow().direction()).isEqualTo(Direction.ENTRY);
+    assertThat(f.turnstile.openCalls()).isEqualTo(1);
+  }
+
+  @Test
+  void should_not_open_the_gate_when_attendance_cannot_rebuild_a_missing_last_pass() {
+    f.token("t", GateFixture.E1, "jti-t");
+    f.attendance.failLastDirection(true);
+
+    assertThatThrownBy(() -> f.scan.scan(f.request("BD-GATE-01", "t")))
+        .isInstanceOf(IllegalStateException.class);
+    assertThat(f.turnstile.openCalls()).isZero();
+    assertThat(f.antiPassback.last(GateFixture.E1)).isEmpty();
+  }
+
+  @Test
   void should_allow_entry_then_exit_through_two_different_gates() {
     f.token("a", GateFixture.E1, "jti-a");
     f.token("b", GateFixture.E1, "jti-b");
@@ -155,8 +200,31 @@ class RecordScanUseCaseTest {
 
     assertThat(first.outcome()).isEqualTo(Outcome.ALLOWED);
     assertThat(retry.outcome()).isEqualTo(Outcome.ALLOWED);
+    assertThat(retry.direction()).isEqualTo(Direction.ENTRY);
     assertThat(retry.duplicate()).isTrue();
     assertThat(f.turnstile.openCalls()).isEqualTo(1);
+  }
+
+  @Test
+  void should_return_a_null_direction_when_an_older_denial_has_no_direction() {
+    var req = f.request("BD-GATE-01", "unreadable");
+    f.attendance.recordDenied(
+        new DenialRecord(
+            req.attemptId(),
+            null,
+            req.gateId(),
+            "BD",
+            null,
+            null,
+            req.scannedAt(),
+            ReasonCode.MALFORMED_TOKEN,
+            req.correlationId()));
+
+    var replay = f.scan.scan(req);
+
+    assertThat(replay.duplicate()).isTrue();
+    assertThat(replay.direction()).isNull();
+    assertThat(f.turnstile.openCalls()).isZero();
   }
 
   // ADR-11 test 2 (P3): timeout never causes a second open command
@@ -281,11 +349,56 @@ class RecordScanUseCaseTest {
   }
 
   @Test
+  void should_not_deny_a_retry_after_token_claim_but_before_attendance_write() {
+    f.token("t", GateFixture.E1, "jti-gap");
+    var req = f.request("BD-GATE-01", "t");
+    assertThat(f.tokens.reserve("jti-gap", req.attemptId(), Duration.ofSeconds(10)))
+        .isEqualTo(Reservation.ACQUIRED);
+
+    var retry = f.scan.scan(req);
+
+    assertThat(retry.outcome()).isEqualTo(Outcome.IN_PROGRESS);
+    assertThat(retry.duplicate()).isTrue();
+    assertThat(f.attendance.find(req.attemptId())).isEmpty();
+    assertThat(f.turnstile.openCalls()).isZero();
+    f.tokens.release("jti-gap", req.attemptId());
+    assertThat(f.scan.scan(req).outcome()).isEqualTo(Outcome.ALLOWED);
+  }
+
+  @Test
+  void should_not_apply_antipassback_to_a_retry_after_the_first_gate_opened() {
+    f.token("t", GateFixture.E1, "jti-open-gap");
+    var req = f.request("BD-GATE-01", "t");
+    f.tokens.reserve("jti-open-gap", req.attemptId(), Duration.ofSeconds(10));
+    f.antiPassback.tryReserve(
+        GateFixture.E1, Direction.ENTRY, req.scannedAt(), Duration.ofSeconds(10));
+    f.antiPassback.confirm(GateFixture.E1);
+
+    var retry = f.scan.scan(req);
+
+    assertThat(retry.outcome()).isEqualTo(Outcome.IN_PROGRESS);
+    assertThat(f.attendance.find(req.attemptId())).isEmpty();
+    assertThat(f.turnstile.openCalls()).isZero();
+  }
+
+  @Test
+  void should_keep_different_attempts_out_of_a_reserved_token() {
+    f.token("t", GateFixture.E1, "jti-other");
+    assertThat(f.tokens.reserve("jti-other", UUID.randomUUID(), Duration.ofSeconds(10)))
+        .isEqualTo(Reservation.ACQUIRED);
+    var result = f.scan.scan(f.request("BD-GATE-01", "t"));
+    assertThat(result.reason()).isEqualTo(ReasonCode.QR_ALREADY_USED);
+    assertThat(f.turnstile.openCalls()).isZero();
+  }
+
+  @Test
   void should_use_a_fresh_reservation_window_after_the_ttl_passes() {
     f.token("t", GateFixture.E1, "jti-1");
-    assertThat(f.tokens.reserve("jti-1", Duration.ofSeconds(10))).isTrue();
+    assertThat(f.tokens.reserve("jti-1", UUID.randomUUID(), Duration.ofSeconds(10)))
+        .isEqualTo(Reservation.ACQUIRED);
     f.clock.advance(Duration.ofSeconds(11));
 
-    assertThat(f.tokens.reserve("jti-1", Duration.ofSeconds(10))).isTrue();
+    assertThat(f.tokens.reserve("jti-1", UUID.randomUUID(), Duration.ofSeconds(10)))
+        .isEqualTo(Reservation.ACQUIRED);
   }
 }

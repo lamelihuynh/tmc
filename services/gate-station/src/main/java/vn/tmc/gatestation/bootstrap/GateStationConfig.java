@@ -169,7 +169,8 @@ public class GateStationConfig {
       IKioskSyncSource source,
       IHeartbeatStore heartbeats,
       IAttendanceGateway attendance,
+      IAntiPassbackStore antiPassback,
       IClock clock) {
-    return new KioskSupportService(gates, source, heartbeats, attendance, clock);
+    return new KioskSupportService(gates, source, heartbeats, attendance, antiPassback, clock);
   }
 }

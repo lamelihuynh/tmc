@@ -23,8 +23,8 @@ import vn.tmc.gatestation.domain.LastPass;
  *
  * confirm moves pending to last in one Lua script.
  *
- * <p>Verified against Redis by RedisAdaptersIT. TODO Team A (A-03): rebuild "last" from Attendance
- * when the key is missing (cold cache).
+ * <p>Verified against Redis by RedisAdaptersIT. RecordScanUseCase restores a missing "last" from
+ * Attendance before evaluating anti-passback.
  */
 public class RedisAntiPassbackStore implements IAntiPassbackStore {
   private static final String LAST = "tmc:apb:last:";
@@ -32,7 +32,18 @@ public class RedisAntiPassbackStore implements IAntiPassbackStore {
   private static final DefaultRedisScript<Long> CONFIRM =
       new DefaultRedisScript<>(
           "local v = redis.call('GET', KEYS[1]) "
-              + "if v then redis.call('SET', KEYS[2], v) redis.call('DEL', KEYS[1]) return 1 "
+              + "if v then "
+              + "local old = redis.call('GET', KEYS[2]) "
+              + "if not old or tonumber(string.match(old, '|(%d+)$')) <= tonumber(string.match(v, '|(%d+)$')) then "
+              + "redis.call('SET', KEYS[2], v) end "
+              + "redis.call('DEL', KEYS[1]) return 1 "
+              + "else return 0 end",
+          Long.class);
+  private static final DefaultRedisScript<Long> REMEMBER_IF_NEWER =
+      new DefaultRedisScript<>(
+          "local old = redis.call('GET', KEYS[1]) "
+              + "if not old or tonumber(string.match(old, '|(%d+)$')) < tonumber(ARGV[2]) then "
+              + "redis.call('SET', KEYS[1], ARGV[1]) return 1 "
               + "else return 0 end",
           Long.class);
 
@@ -46,6 +57,15 @@ public class RedisAntiPassbackStore implements IAntiPassbackStore {
   public Optional<LastPass> last(UUID employeeUuid) {
     return Optional.ofNullable(redis.opsForValue().get(LAST + employeeUuid))
         .map(RedisAntiPassbackStore::decode);
+  }
+
+  @Override
+  public void rememberIfNewer(UUID employeeUuid, LastPass pass) {
+    redis.execute(
+        REMEMBER_IF_NEWER,
+        List.of(LAST + employeeUuid),
+        encode(pass.direction(), pass.at()),
+        Long.toString(pass.at().toEpochMilli()));
   }
 
   @Override

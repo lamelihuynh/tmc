@@ -16,6 +16,9 @@ public interface IAntiPassbackStore {
   /** The last confirmed pass, empty when the employee has none on record. */
   Optional<LastPass> last(UUID employeeUuid);
 
+  /** Restore or ingest a confirmed pass without replacing a newer one. */
+  void rememberIfNewer(UUID employeeUuid, LastPass pass);
+
   /**
    * Atomic: takes the pending slot for this employee.
    *

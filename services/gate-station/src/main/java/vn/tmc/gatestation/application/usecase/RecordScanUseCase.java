@@ -99,9 +99,22 @@ public class RecordScanUseCase implements IGateAccess {
       return deny(r, gate.factoryCode(), null, null, null, verdict.reason());
     }
     UUID employeeUuid = verdict.employeeUuid();
+    if (tokens.ownedBy(verdict.jti(), r.attemptId())) {
+      // A first scan can have confirmed anti-passback before its Attendance result is visible.
+      return replayOrInProgress(r.attemptId(), null);
+    }
 
     // step 2
     var last = antiPassback.last(employeeUuid);
+    if (last.isEmpty()) {
+      // A missing Redis key does not mean the employee has never passed. Attendance is
+      // authoritative;
+      // an unavailable Attendance must stop this scan before any gate command is sent.
+      attendance
+          .lastDirection(employeeUuid, r.scannedAt())
+          .ifPresent(pass -> antiPassback.rememberIfNewer(employeeUuid, pass));
+      last = antiPassback.last(employeeUuid);
+    }
     Direction direction = DirectionResolver.resolve(gate, last);
     var context =
         new AccessContext(
@@ -112,7 +125,13 @@ public class RecordScanUseCase implements IGateAccess {
     }
 
     // step 3: atomic reservations
-    if (!tokens.reserve(verdict.jti(), settings.reservationTtl())) {
+    var reservation = tokens.reserve(verdict.jti(), r.attemptId(), settings.reservationTtl());
+    if (reservation == ITokenReservation.Reservation.SAME_ATTEMPT) {
+      // The first request claimed the QR but may not have written Attendance yet. A retry must
+      // neither deny the attempt nor send a second command to the turnstile.
+      return replayOrInProgress(r.attemptId(), direction);
+    }
+    if (reservation == ITokenReservation.Reservation.OTHER_ATTEMPT) {
       return deny(
           r,
           gate.factoryCode(),
@@ -122,7 +141,7 @@ public class RecordScanUseCase implements IGateAccess {
           ReasonCode.QR_ALREADY_USED);
     }
     if (!antiPassback.tryReserve(employeeUuid, direction, r.scannedAt(), settings.pendingTtl())) {
-      tokens.release(verdict.jti());
+      tokens.release(verdict.jti(), r.attemptId());
       return deny(
           r,
           gate.factoryCode(),
@@ -149,7 +168,7 @@ public class RecordScanUseCase implements IGateAccess {
     } catch (RuntimeException e) {
       // Nothing was sent to the gate. Release so the person can rescan; Attendance recovery frees
       // the row.
-      tokens.release(verdict.jti());
+      tokens.release(verdict.jti(), r.attemptId());
       antiPassback.release(employeeUuid);
       throw e;
     }
@@ -175,7 +194,7 @@ public class RecordScanUseCase implements IGateAccess {
 
   private ScanResult onOpened(
       ScanRequest r, String jti, Instant expiresAt, UUID employee, Direction direction) {
-    tokens.markUsed(jti, expiresAt.plus(settings.tokenBlockAfterUse()));
+    tokens.markUsed(jti, r.attemptId(), expiresAt.plus(settings.tokenBlockAfterUse()));
     antiPassback.confirm(employee);
     try {
       attendance.recordGateResult(r.attemptId(), GateResult.OPENED, r.correlationId());
@@ -190,7 +209,7 @@ public class RecordScanUseCase implements IGateAccess {
 
   private ScanResult onError(ScanRequest r, String jti, UUID employee, Direction direction) {
     safeRecordResult(r, GateResult.ERROR);
-    tokens.release(jti);
+    tokens.release(jti, r.attemptId());
     antiPassback.release(employee);
     return new ScanResult(
         r.attemptId(), Outcome.DENIED, ReasonCode.GATE_HARDWARE_ERROR, direction, false);
@@ -201,7 +220,7 @@ public class RecordScanUseCase implements IGateAccess {
     safeRecordResult(r, GateResult.UNKNOWN);
     // Unknown means the gate may have opened: keep the token blocked and the slot pending until
     // reconcile.
-    tokens.markUsed(jti, expiresAt.plus(settings.tokenBlockAfterUse()));
+    tokens.markUsed(jti, r.attemptId(), expiresAt.plus(settings.tokenBlockAfterUse()));
     antiPassback.keepPending(employee, settings.pendingTtl());
     return new ScanResult(
         r.attemptId(), Outcome.PENDING, ReasonCode.TURNSTILE_TIMEOUT_RETRY_SCAN, direction, false);
@@ -244,15 +263,31 @@ public class RecordScanUseCase implements IGateAccess {
 
   private ScanResult replay(AttemptState s) {
     return switch (s.state()) {
-      case COMMITTED -> new ScanResult(s.attemptId(), Outcome.ALLOWED, null, null, true);
-      case DENIED -> new ScanResult(s.attemptId(), Outcome.DENIED, s.reason(), null, true);
+      case COMMITTED -> new ScanResult(s.attemptId(), Outcome.ALLOWED, null, s.direction(), true);
+      case DENIED -> new ScanResult(s.attemptId(), Outcome.DENIED, s.reason(), s.direction(), true);
       case GATE_FAILED ->
-          new ScanResult(s.attemptId(), Outcome.DENIED, ReasonCode.GATE_HARDWARE_ERROR, null, true);
+          new ScanResult(
+              s.attemptId(), Outcome.DENIED, ReasonCode.GATE_HARDWARE_ERROR, s.direction(), true);
       case GATE_UNKNOWN ->
           new ScanResult(
-              s.attemptId(), Outcome.PENDING, ReasonCode.TURNSTILE_TIMEOUT_RETRY_SCAN, null, true);
+              s.attemptId(),
+              Outcome.PENDING,
+              ReasonCode.TURNSTILE_TIMEOUT_RETRY_SCAN,
+              s.direction(),
+              true);
       case RESERVED, GATE_COMMANDED, OTHER ->
-          new ScanResult(s.attemptId(), Outcome.IN_PROGRESS, ReasonCode.IN_PROGRESS, null, true);
+          new ScanResult(
+              s.attemptId(), Outcome.IN_PROGRESS, ReasonCode.IN_PROGRESS, s.direction(), true);
     };
+  }
+
+  private ScanResult replayOrInProgress(UUID attemptId, Direction direction) {
+    return attendance
+        .find(attemptId)
+        .map(this::replay)
+        .orElseGet(
+            () ->
+                new ScanResult(
+                    attemptId, Outcome.IN_PROGRESS, ReasonCode.IN_PROGRESS, direction, true));
   }
 }
