@@ -221,5 +221,42 @@ class SyncAttendanceEventTest {
   @Disabled(
       "TODO Team D (NFR-08, AC-07): alert when records are still unconfirmed at 08:00 on the 1st")
   @Test
-  void should_raise_a_deadline_alert_before_noon_on_the_first_day_of_the_month() {}
+  void should_raise_a_deadline_alert_before_noon_on_the_first_day_of_the_month() {
+    var now = new java.util.concurrent.atomic.AtomicReference<>(
+        Instant.parse("2026-11-01T00:59:00Z"));
+    var check = new vn.tmc.hrintegration.application.usecase.PayrollDeadlineCheck(log, now::get);
+
+    var october = java.time.YearMonth.of(2026, 10);
+    var november = october.plusMonths(1);
+    var octoberId = Ids.uuidV7();
+    var novemberId = Ids.uuidV7();
+
+    var outstanding = new vn.tmc.hrintegration.domain.SyncRecord(
+        octoberId, SyncStatus.UNKNOWN, 1, null, now.get(), 1, octoberId, october);
+    log.save(outstanding);
+    log.save(new vn.tmc.hrintegration.domain.SyncRecord(
+        novemberId, SyncStatus.FAILED, 1, null, now.get(), 1, novemberId, november));
+
+    assertThat(check.check()).isEmpty();
+
+    now.set(Instant.parse("2026-11-01T01:00:00Z"));
+    var morning = check.check().orElseThrow();
+    assertThat(morning.level())
+        .isEqualTo(vn.tmc.hrintegration.application.usecase.PayrollDeadlineCheck.Level.WARNING);
+    assertThat(morning.period()).isEqualTo(october);
+    assertThat(morning.outstanding()).isEqualTo(1);
+
+    now.set(Instant.parse("2026-11-01T05:00:00Z"));
+    var noon = check.check().orElseThrow();
+    assertThat(noon.level())
+        .isEqualTo(vn.tmc.hrintegration.application.usecase.PayrollDeadlineCheck.Level.OVERDUE);
+    assertThat(noon.outstanding()).isEqualTo(1);
+
+    log.save(outstanding.with(SyncStatus.SYNCED, null, now.get()));
+    assertThat(check.check()).isEmpty();
+
+    log.save(outstanding);
+    now.set(Instant.parse("2026-11-02T01:00:00Z"));
+    assertThat(check.check()).isEmpty();
+  }
 }

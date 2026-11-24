@@ -64,8 +64,13 @@ public class SyncAttendanceEventUseCase {
           }
         }
       }
+
+      var scannedAt = Instant.parse(requiredField(event, "scannedAt"));
+      var period = java.time.YearMonth.from(
+          scannedAt.atZone(java.time.ZoneId.of("Asia/Ho_Chi_Minh")));
+
       record = new SyncRecord(
-          event.eventId(), SyncStatus.PENDING, 0, null, clock.now(), version, batchId);
+          event.eventId(), SyncStatus.PENDING, 0, null, clock.now(), version, batchId, period);
     }
 
     var submission = new Submission(

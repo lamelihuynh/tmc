@@ -1,6 +1,7 @@
 package vn.tmc.hrintegration.domain;
 
 import java.time.Instant;
+import java.time.YearMonth;
 import java.util.UUID;
 
 public record SyncRecord(
@@ -10,19 +11,24 @@ public record SyncRecord(
     String lastError,
     Instant updatedAt,
     long aggregateVersion,
-    UUID batchId) {
+    UUID batchId,
+    YearMonth attendancePeriod) {
 
   public SyncRecord(
       UUID eventId, SyncStatus status, int attempts, String lastError, Instant updatedAt) {
-    this(eventId, status, attempts, lastError, updatedAt, 1L, eventId);
+    this(eventId, status, attempts, lastError, updatedAt, 1L, eventId, null);
+  }
+
+  public SyncRecord(
+      UUID eventId, SyncStatus status, int attempts, String lastError, Instant updatedAt,
+      long aggregateVersion, UUID batchId) {
+    this(eventId, status, attempts, lastError, updatedAt, aggregateVersion, batchId, null);
   }
 
   public SyncRecord with(SyncStatus next, String error, Instant now) {
-    int nextAttempts = attempts;
-    if (next == SyncStatus.IN_PROGRESS) {
-      nextAttempts++;
-    }
-    return new SyncRecord(eventId, next, nextAttempts, error, now, aggregateVersion, batchId);
+    int nextAttempts = next == SyncStatus.IN_PROGRESS ? attempts + 1 : attempts;
+    return new SyncRecord(
+        eventId, next, nextAttempts, error, now, aggregateVersion, batchId, attendancePeriod);
   }
 
   public boolean isSettled() {
