@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import vn.tmc.hrintegration.adapter.out.inmem.InMemorySyncLogRepository;
 import vn.tmc.hrintegration.adapter.out.inmem.SimulatedHrPayrollAdapter;
+import vn.tmc.hrintegration.application.port.out.IHrPayrollPort.LookupResult;
 import vn.tmc.hrintegration.application.port.out.IHrPayrollPort.SubmitResult;
 import vn.tmc.hrintegration.application.usecase.SyncAttendanceEventUseCase;
 import vn.tmc.hrintegration.application.usecase.SyncMonitoringService;
@@ -42,12 +43,9 @@ class SyncAttendanceEventTest {
         "BD",
         "BD-GATE-01",
         Map.of(
-            "employeeUuid",
-            UUID.randomUUID().toString(),
-            "direction",
-            "ENTRY",
-            "scannedAt",
-            Instant.now().toString()));
+            "employeeUuid", UUID.randomUUID().toString(),
+            "direction", "ENTRY",
+            "scannedAt", Instant.now().toString()));
   }
 
   @Test
@@ -58,8 +56,7 @@ class SyncAttendanceEventTest {
 
     assertThat(log.find(id).orElseThrow().status()).isEqualTo(SyncStatus.SYNCED);
     assertThat(hr.received()).hasSize(1);
-    assertThat(hr.received().get(0).eventId())
-        .isEqualTo(id); // the idempotency key HR can dedupe on
+    assertThat(hr.received().get(0).eventId()).isEqualTo(id);
   }
 
   @Test
@@ -67,7 +64,7 @@ class SyncAttendanceEventTest {
     var id = Ids.uuidV7();
     sync.handle(confirmed(id));
 
-    sync.handle(confirmed(id)); // a different message about the same event
+    sync.handle(confirmed(id));
 
     assertThat(hr.received()).hasSize(1);
   }
@@ -124,10 +121,97 @@ class SyncAttendanceEventTest {
         .isInstanceOf(AccessDeniedException.class);
   }
 
-  @Disabled(
-      "TODO Team D (document.md 7.1 of UC-09): UNKNOWN is resolved by lookup BEFORE any resend")
   @Test
-  void should_look_up_the_result_before_resending_an_unknown_event() {}
+  void should_look_up_the_result_before_resending_an_unknown_event() {
+    var event = confirmed(Ids.uuidV7());
+    hr.respondWith(SubmitResult.TIMEOUT);
+    sync.handle(event);
+
+    assertThat(log.find(event.eventId()).orElseThrow().status()).isEqualTo(SyncStatus.UNKNOWN);
+    assertThat(hr.received()).hasSize(1);
+
+    hr.respondToLookupWith(LookupResult.ACCEPTED);
+    sync.handle(event);
+
+    assertThat(hr.received()).hasSize(1);
+    assertThat(log.find(event.eventId()).orElseThrow().status()).isEqualTo(SyncStatus.SYNCED);
+  }
+
+  @Test
+  void should_resend_with_the_same_event_id_when_hr_confirms_not_found() {
+    var event = confirmed(Ids.uuidV7());
+    hr.respondWith(SubmitResult.TIMEOUT);
+    sync.handle(event);
+
+    assertThat(log.find(event.eventId()).orElseThrow().status()).isEqualTo(SyncStatus.UNKNOWN);
+    assertThat(hr.received()).hasSize(1);
+
+    hr.respondToLookupWith(LookupResult.NOT_FOUND);
+    hr.respondWith(SubmitResult.ACCEPTED);
+    sync.handle(event);
+
+    assertThat(hr.received()).hasSize(2);
+    assertThat(hr.received().get(0).eventId()).isEqualTo(event.eventId());
+    assertThat(hr.received().get(1).eventId()).isEqualTo(event.eventId());
+    assertThat(log.find(event.eventId()).orElseThrow().status()).isEqualTo(SyncStatus.SYNCED);
+  }
+
+  @Test
+  void should_keep_unknown_without_resending_when_lookup_is_inconclusive() {
+    var event = confirmed(Ids.uuidV7());
+    hr.respondWith(SubmitResult.TIMEOUT);
+    sync.handle(event);
+
+    hr.respondToLookupWith(LookupResult.UNKNOWN);
+    sync.handle(event);
+
+    assertThat(hr.received()).hasSize(1);
+    assertThat(log.find(event.eventId()).orElseThrow().status()).isEqualTo(SyncStatus.UNKNOWN);
+  }
+
+  @Test
+  void should_send_a_correction_once_after_the_original_event_was_synced() {
+    var original = confirmed(Ids.uuidV7());
+    var eventId = original.eventId();
+    var correctionId = Ids.uuidV7();
+    var correctedAt = Instant.parse("2026-11-24T10:00:00Z");
+
+    sync.handle(original);
+    assertThat(log.find(eventId).orElseThrow().status()).isEqualTo(SyncStatus.SYNCED);
+
+    var correction =
+        new EventEnvelope(
+            Ids.uuidV7(),
+            "AttendanceCorrected",
+            1,
+            eventId,
+            2,
+            correctedAt.plusSeconds(60),
+            "c",
+            "attendance-edge",
+            "BD",
+            "BD-GATE-01",
+            Map.of(
+                "status", "CORRECTED",
+                "correctionId", correctionId.toString(),
+                "originalAttemptId", eventId.toString(),
+                "revision", 1,
+                "employeeUuid", original.payload().get("employeeUuid"),
+                "direction", "EXIT",
+                "scannedAt", correctedAt.toString(),
+                "previousDirection", "ENTRY",
+                "previousScannedAt", original.payload().get("scannedAt")));
+
+    sync.handle(correction);
+    sync.handle(correction);
+
+    assertThat(hr.received()).hasSize(2);
+    var sent = hr.received().get(1);
+    assertThat(sent.eventId()).isEqualTo(eventId);
+    assertThat(sent.batchId()).isEqualTo(correctionId);
+    assertThat(sent.direction()).isEqualTo("EXIT");
+    assertThat(sent.scannedAt()).isEqualTo(correctedAt);
+  }
 
   @Disabled(
       "TODO Team D (NFR-08): reconcile the period against Attendance via IAttendanceQuery and build the batch")

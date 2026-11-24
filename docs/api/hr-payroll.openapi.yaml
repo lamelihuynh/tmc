@@ -13,8 +13,10 @@ info:
        API Turnstile (`TURNSTILE_EDGE_API_TOKEN`, "cổng xoay không mở 2 lần"). Dưới đây là phiên bản đúng.
     3. Xác nhận với HR có hỗ trợ khóa idempotency hoặc tra cứu theo lô không (M1 mục 12.7: "HR timeout không chứng minh
        hệ thống ngoài chưa ghi dữ liệu").
+
 servers:
   - url: https://hr-payroll.tmc.internal
+
 paths:
   /api/v1/attendance-batches:
     post:
@@ -32,19 +34,48 @@ paths:
         "200": { description: Tiếp nhận toàn bộ }
         "207": { description: "Một phần bản ghi lỗi. Chỉ gửi lại phần chưa được tiếp nhận" }
         "422": { description: "Lỗi dữ liệu; kèm danh sách lỗi theo bản ghi. Không retry mù: sửa dữ liệu trước" }
+
   /api/v1/attendance-batches/{batch_id}/status:
     get:
-      summary: Tra kết quả xử lý một lô khi lời gọi POST trước đó timeout. BẮT BUỘC tra trước khi gửi lại một lô UNKNOWN
+      summary: Tra cứu kết quả xử lý lô trước khi gửi lại sau timeout
+      description: |
+        Hợp đồng đề xuất cho bộ giả lập HR của bài M2. Khi lô đang ở trạng thái UNKNOWN,
+        TMC tra cứu bằng batch_id của lần gửi trước. Nếu HR trả PENDING, nội dung phản hồi
+        thiếu status, status không nhận diện được hoặc lỗi mạng, TMC giữ trạng thái UNKNOWN.
+        Chỉ khi endpoint này trả 404 thì TMC mới gửi lại lô với cùng Idempotency-Key.
       parameters:
-        - { name: batch_id, in: path, required: true, schema: { type: string } }
+        - name: batch_id
+          in: path
+          required: true
+          schema:
+            type: string
       responses:
-        "200": { description: Trạng thái lô }
-        "404": { description: HR chưa nhận lô này (an toàn để gửi lại với cùng khóa) }
+        "200":
+          description: Tra cứu thành công. Trường status cho biết kết quả xử lý lô tại HR.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [ACCEPTED, REJECTED, PENDING]
+                    description: |
+                      ACCEPTED: HR đã tiếp nhận lô, TMC ghi SYNCED.
+                      REJECTED: HR đã từ chối lô, TMC ghi FAILED.
+                      PENDING: HR đang xử lý lô, TMC giữ UNKNOWN để tra cứu lại.
+              example:
+                status: ACCEPTED
+        "404":
+          description: HR xác nhận chưa nhận lô này. TMC có thể gửi lại với cùng Idempotency-Key.
+
   /api/v1/attendance-reconciliations:
     post:
       summary: Gửi biên bản chốt đối soát tháng (tổng nhân viên, tổng bản ghi khớp) trước 12:00 ngày 1
       responses:
         "200": { description: Đã nhận biên bản }
+
 components:
   schemas:
     AttendanceBatch:

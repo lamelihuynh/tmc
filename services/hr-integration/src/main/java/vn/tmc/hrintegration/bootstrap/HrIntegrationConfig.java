@@ -1,8 +1,13 @@
 package vn.tmc.hrintegration.bootstrap;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.net.URI;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import vn.tmc.hrintegration.adapter.out.http.HttpHrPayrollAdapter;
 import vn.tmc.hrintegration.adapter.out.inmem.InMemorySyncLogRepository;
 import vn.tmc.hrintegration.adapter.out.inmem.SimulatedHrPayrollAdapter;
 import vn.tmc.hrintegration.application.port.in.ISyncMonitoring;
@@ -27,10 +32,19 @@ public class HrIntegrationConfig {
     return new InMemorySyncLogRepository();
   }
 
-  /** TODO Team D: replace with the HTTP adapter for the real HR/Payroll API (document.md 16.4). */
   @Bean
-  IHrPayrollPort hrPayroll() {
+  @ConditionalOnProperty(name = "tmc.hr.mode", havingValue = "simulated", matchIfMissing = true)
+  SimulatedHrPayrollAdapter hrPayroll() {
     return new SimulatedHrPayrollAdapter();
+  }
+
+  @Bean
+  @ConditionalOnProperty(name = "tmc.hr.mode", havingValue = "http")
+  HttpHrPayrollAdapter httpHrPayroll(
+      @Value("${tmc.hr.url}") URI baseUri,
+      @Value("${HR_PAYROLL_API_TOKEN}") String bearerToken,
+      ObjectMapper json) {
+    return new HttpHrPayrollAdapter(baseUri, bearerToken, json);
   }
 
   @Bean
