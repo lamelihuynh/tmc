@@ -55,6 +55,27 @@ public class InMemoryAttemptRepository implements IAttemptRepository {
         .toList();
   }
 
+  @Override
+  public List<AccessAttempt> findAnomalies(
+      String factoryCode, Instant from, Instant to, int limit) {
+    boolean hasFactory = factoryCode != null && !factoryCode.isBlank();
+    return rows.values().stream()
+        .filter(a -> a.anomaly() != null)
+        .filter(a -> !hasFactory || factoryCode.equals(a.factoryCode()))
+        .filter(a -> from == null || !a.scannedAt().isBefore(from))
+        .filter(a -> to == null || !a.scannedAt().isAfter(to))
+        .sorted(
+            Comparator.comparing(AccessAttempt::scannedAt).thenComparing(AccessAttempt::attemptId))
+        .limit(limit)
+        .map(InMemoryAttemptRepository::copy)
+        .toList();
+  }
+
+  @Override
+  public long countByStatus(AttemptStatus status) {
+    return rows.values().stream().filter(a -> a.status() == status).count();
+  }
+
   private static AccessAttempt copy(AccessAttempt a) {
     return AccessAttempt.restore(
         a.attemptId(),

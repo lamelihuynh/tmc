@@ -27,3 +27,9 @@ tmc:
       command-grace-seconds: 10
     scheduling:
       enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics

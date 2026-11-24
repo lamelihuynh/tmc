@@ -100,6 +100,26 @@ paths:
                     attemptId: { type: string, format: uuid }
                     outcome: { type: string, enum: [ACCEPTED, DUPLICATE, ANOMALY] }
                     detail: { type: string, nullable: true }
+  /hr/v1/anomalies:
+    get:
+      summary: Hàng đợi bất thường offline cho HR (UC-09, B-03)
+      description: |
+        Liệt kê các lượt quét có cờ bất thường (`TOKEN_REUSED_OFFLINE`, `ANTI_PASSBACK_OFFLINE`) chưa xử lý,
+        sắp xếp theo thời gian quét tăng dần. Yêu cầu vai trò `HR_STAFF`.
+      parameters:
+        - { name: factory, in: query, required: false, schema: { type: string }, description: "Lọc theo mã nhà máy (ví dụ BD, LA)" }
+        - { name: from, in: query, required: false, schema: { type: string, format: date-time }, description: "Từ thời điểm quét (bao gồm)" }
+        - { name: to, in: query, required: false, schema: { type: string, format: date-time }, description: "Đến thời điểm quét (bao gồm)" }
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 100, minimum: 1, maximum: 500 }, description: "Số bản ghi tối đa" }
+      responses:
+        "200":
+          description: Danh sách lượt bất thường phù hợp bộ lọc
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AnomalyView" }
+        "403": { description: Chưa xác thực hoặc không có vai trò HR_STAFF }
 components:
   parameters:
     Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -166,3 +186,17 @@ components:
         reasonCode: { type: string, nullable: true }
         anomaly: { type: string, enum: [TOKEN_REUSED_OFFLINE, ANTI_PASSBACK_OFFLINE], nullable: true }
         duplicate: { type: boolean }
+    AnomalyView:
+      type: object
+      properties:
+        attemptId: { type: string, format: uuid }
+        employeeUuid: { type: string, format: uuid, nullable: true }
+        factoryCode: { type: string }
+        gateId: { type: string }
+        direction: { type: string, enum: [ENTRY, EXIT], nullable: true }
+        anomaly: { type: string, enum: [TOKEN_REUSED_OFFLINE, ANTI_PASSBACK_OFFLINE] }
+        status:
+          type: string
+          enum: [RECEIVED, VALIDATED, RESERVED, GATE_COMMANDED, GATE_OPENED, GATE_FAILED, GATE_UNKNOWN, COMMITTED, DENIED]
+        scannedAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }

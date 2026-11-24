@@ -1,5 +1,6 @@
 package vn.tmc.attendance.adapter.out.inmem;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -31,6 +32,14 @@ public class InMemoryOutboxRepository implements IOutboxRepository {
   @Override
   public synchronized void recordFailure(UUID messageId) {
     // nothing to count in memory; the row simply stays pending
+  }
+
+  @Override
+  public synchronized long countPendingOlderThan(Instant cutoff) {
+    return rows.stream()
+        .filter(e -> !published.contains(e.messageId()))
+        .filter(e -> e.occurredAt() != null && e.occurredAt().isBefore(cutoff))
+        .count();
   }
 
   /** For tests: every event ever written, published or not. */

@@ -2,6 +2,7 @@ package vn.tmc.attendance.adapter.out.persistence;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -114,6 +115,39 @@ public class JdbcAttemptRepository implements IAttemptRepository {
         status.name(),
         Timestamp.from(cutoff),
         limit);
+  }
+
+  @Override
+  public List<AccessAttempt> findAnomalies(
+      String factoryCode, Instant from, Instant to, int limit) {
+    var sql =
+        new StringBuilder("SELECT ")
+            .append(COLUMNS)
+            .append(" FROM access_attempts WHERE anomaly IS NOT NULL");
+    var params = new ArrayList<>();
+    if (factoryCode != null && !factoryCode.isBlank()) {
+      sql.append(" AND factory_code = ?");
+      params.add(factoryCode);
+    }
+    if (from != null) {
+      sql.append(" AND scanned_at >= ?");
+      params.add(Timestamp.from(from));
+    }
+    if (to != null) {
+      sql.append(" AND scanned_at <= ?");
+      params.add(Timestamp.from(to));
+    }
+    sql.append(" ORDER BY scanned_at ASC, attempt_id ASC LIMIT ?");
+    params.add(limit);
+    return jdbc.query(sql.toString(), MAPPER, params.toArray());
+  }
+
+  @Override
+  public long countByStatus(AttemptStatus status) {
+    Long count =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM access_attempts WHERE status = ?", Long.class, status.name());
+    return count == null ? 0L : count;
   }
 
   private static String nameOrNull(Enum<?> value) {

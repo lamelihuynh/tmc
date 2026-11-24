@@ -28,4 +28,13 @@ public interface IAttemptRepository {
 
   /** Attempts in {@code status} whose last change is strictly before {@code cutoff}. */
   List<AccessAttempt> findByStatusUpdatedBefore(AttemptStatus status, Instant cutoff, int limit);
+
+  /**
+   * Unresolved attempts flagged with an offline anomaly, oldest scan first, optionally filtered by
+   * factory and scan time range [from, to].
+   */
+  List<AccessAttempt> findAnomalies(String factoryCode, Instant from, Instant to, int limit);
+
+  /** Current number of attempts in {@code status}. */
+  long countByStatus(AttemptStatus status);
 }

@@ -7,9 +7,15 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import vn.tmc.attendance.application.port.in.AttemptNotFoundException;
 import vn.tmc.attendance.domain.IllegalAttemptTransitionException;
+import vn.tmc.platform.security.AccessDeniedException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+
+  @ExceptionHandler(AccessDeniedException.class)
+  ResponseEntity<Map<String, String>> forbidden(AccessDeniedException e) {
+    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "FORBIDDEN"));
+  }
 
   @ExceptionHandler(AttemptNotFoundException.class)
   ResponseEntity<Map<String, String>> notFound(AttemptNotFoundException e) {

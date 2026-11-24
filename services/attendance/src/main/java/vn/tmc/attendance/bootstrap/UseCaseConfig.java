@@ -22,6 +22,8 @@ import vn.tmc.attendance.application.usecase.RecoverStaleAttemptsUseCase;
 import vn.tmc.attendance.application.usecase.RecoveryPolicy;
 import vn.tmc.platform.kernel.IClock;
 import vn.tmc.platform.messaging.EventPublisher;
+import vn.tmc.platform.security.PrincipalResolver;
+import vn.tmc.platform.security.jwt.JwtPrincipalVerifier;
 
 /**
  * Wires use cases to whatever ports the active profile provides. Business classes carry no Spring
@@ -33,6 +35,25 @@ public class UseCaseConfig {
   @Bean
   IClock clock() {
     return IClock.system();
+  }
+
+  /**
+   * Who is calling (docs/api/identity.openapi.yaml). Follows UserQrConfig.principalResolver: Bearer
+   * tokens verified against JWKS when configured; dev headers trusted only on dev profiles.
+   */
+  @Bean
+  PrincipalResolver principalResolver(
+      @Value("${tmc.security.jwks-url:}") String jwksUrl,
+      @Value("${tmc.security.jwks-json:}") String jwksJson,
+      @Value("${tmc.security.allow-dev-headers:false}") boolean allowDevHeaders,
+      IClock clock) {
+    JwtPrincipalVerifier verifier = null;
+    if (!jwksJson.isBlank()) {
+      verifier = JwtPrincipalVerifier.fromJwksJson(jwksJson, clock);
+    } else if (!jwksUrl.isBlank()) {
+      verifier = JwtPrincipalVerifier.fromJwksUrl(jwksUrl, clock);
+    }
+    return new PrincipalResolver(verifier, allowDevHeaders);
   }
 
   @Bean
