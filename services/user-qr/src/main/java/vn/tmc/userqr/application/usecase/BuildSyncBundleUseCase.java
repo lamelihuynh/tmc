@@ -2,7 +2,6 @@ package vn.tmc.userqr.application.usecase;
 
 import java.time.Instant;
 import java.util.Base64;
-import java.util.List;
 import vn.tmc.platform.kernel.IClock;
 import vn.tmc.userqr.application.port.in.ISyncBundle;
 import vn.tmc.userqr.application.port.out.IDeviceKeyRegistry;
@@ -14,7 +13,7 @@ public class BuildSyncBundleUseCase implements ISyncBundle {
   private final IClock clock;
 
   public BuildSyncBundleUseCase(IDeviceKeyRegistry registry, IClock clock) {
-    this(registry, since -> List.of(), clock);
+    this(registry, IEmployeeDirectory.empty(), clock);
   }
 
   public BuildSyncBundleUseCase(

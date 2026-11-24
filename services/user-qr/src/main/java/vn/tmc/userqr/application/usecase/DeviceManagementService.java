@@ -12,6 +12,7 @@ import vn.tmc.platform.security.Principal;
 import vn.tmc.platform.security.Rbac;
 import vn.tmc.platform.security.Role;
 import vn.tmc.userqr.application.port.in.IDeviceManagement;
+import vn.tmc.userqr.application.port.out.ActiveDeviceConflictException;
 import vn.tmc.userqr.application.port.out.IAuditLog;
 import vn.tmc.userqr.application.port.out.IDeviceKeyRegistry;
 import vn.tmc.userqr.application.port.out.ITransactionRunner;
@@ -51,17 +52,25 @@ public class DeviceManagementService implements IDeviceManagement {
       throw new AccessDeniedException("an employee can only register their own device");
     }
     var key = decodeEcPublicKey(publicKeyX509Base64);
-    return tx.inTransaction(
-        () -> {
-          var now = clock.now();
-          registry
-              .findActiveByEmployee(employeeUuid)
-              .ifPresent(old -> registry.save(old.revoke(now)));
-          var device = Device.register("dev-" + Ids.uuidV7(), employeeUuid, key, now);
-          registry.save(device);
-          audit.record("DEVICE_REGISTER", caller.subject(), device.deviceId(), "OK");
-          return new RegisteredDevice(device.deviceId());
-        });
+    try {
+      return tx.inTransaction(
+          () -> {
+            var now = clock.now();
+            registry
+                .findActiveByEmployee(employeeUuid)
+                .ifPresent(old -> registry.save(old.revoke(now)));
+            var device = Device.register("dev-" + Ids.uuidV7(), employeeUuid, key, now);
+            registry.save(device);
+            audit.record("DEVICE_REGISTER", caller.subject(), device.deviceId(), "OK");
+            return new RegisteredDevice(device.deviceId());
+          });
+    } catch (ActiveDeviceConflictException e) {
+      // C-01: a parallel registration for the same employee committed first. This one was rolled
+      // back entirely (no device, no revocation, no outbox row); only the refusal is audited, after
+      // the rollback so it survives. The caller gets 409 and may simply register again.
+      audit.record("DEVICE_REGISTER", caller.subject(), employeeUuid.toString(), "CONFLICT");
+      throw e;
+    }
   }
 
   @Override

@@ -12,7 +12,12 @@ public interface IDeviceKeyRegistry {
 
   Optional<Device> findActiveByEmployee(UUID employeeUuid);
 
-  /** Insert or replace by device id. */
+  /**
+   * Insert or replace by device id.
+   *
+   * @throws ActiveDeviceConflictException when {@code device} is ACTIVE and the employee already
+   *     has another ACTIVE device (at most one per employee, ADR-12)
+   */
   void save(Device device);
 
   /** Devices registered or revoked strictly after {@code since}, oldest change first. */

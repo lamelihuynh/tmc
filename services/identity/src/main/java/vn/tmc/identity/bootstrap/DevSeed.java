@@ -14,6 +14,15 @@ final class DevSeed {
 
   static final String DEV_PASSWORD = "dev-only-change-me";
 
+  /**
+   * Dev-only RFC 4648 Base32 TOTP secrets for MFA-protected staff accounts (C-05). Loaded only when
+   * {@code tmc.identity.mfa.dev-secrets-enabled=true} (profiles {@code local} and {@code inmem}).
+   * Never used on the default profile.
+   */
+  static final String DEV_ADMIN_TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+
+  static final String DEV_HR_TOTP_SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+
   record Employee(String username, UUID employeeUuid, Set<String> factories) {}
 
   static final List<Employee> EMPLOYEES =

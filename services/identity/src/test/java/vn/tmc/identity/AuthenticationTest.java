@@ -236,9 +236,4 @@ class AuthenticationTest {
       "TODO Team C (FR-31): create, change role, deactivate accounts; role change ends open sessions")
   @Test
   void should_end_open_sessions_when_a_role_changes() {}
-
-  @Disabled(
-      "TODO Team C (FR-08): employee eligibility feed for Gate Station through the sync bundle")
-  @Test
-  void should_publish_employee_eligibility_for_the_edge() {}
 }

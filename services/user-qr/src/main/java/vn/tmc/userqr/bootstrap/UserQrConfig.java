@@ -2,7 +2,6 @@ package vn.tmc.userqr.bootstrap;
 
 import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -20,8 +19,10 @@ import vn.tmc.userqr.adapter.out.inmem.InMemoryTransactionRunner;
 import vn.tmc.userqr.adapter.out.inmem.LoggingAuditLog;
 import vn.tmc.userqr.adapter.out.messaging.OutboxAuditLog;
 import vn.tmc.userqr.adapter.out.persistence.JdbcDeviceKeyRegistry;
+import vn.tmc.userqr.adapter.out.persistence.JdbcEmployeeDirectory;
 import vn.tmc.userqr.adapter.out.persistence.SpringTransactionRunner;
 import vn.tmc.userqr.application.port.in.IDeviceManagement;
+import vn.tmc.userqr.application.port.in.IEmployeeEligibility;
 import vn.tmc.userqr.application.port.in.IQRValidation;
 import vn.tmc.userqr.application.port.in.ISyncBundle;
 import vn.tmc.userqr.application.port.out.IAuditLog;
@@ -31,12 +32,12 @@ import vn.tmc.userqr.application.port.out.ITokenCodec;
 import vn.tmc.userqr.application.port.out.ITransactionRunner;
 import vn.tmc.userqr.application.usecase.BuildSyncBundleUseCase;
 import vn.tmc.userqr.application.usecase.DeviceManagementService;
+import vn.tmc.userqr.application.usecase.EmployeeEligibilityService;
 import vn.tmc.userqr.application.usecase.VerifyQrTokenUseCase;
 import vn.tmc.userqr.domain.TokenVerificationPolicy;
 
 /** Composition root: the only place that knows which adapter implements which port. */
 @Configuration
-@EnableConfigurationProperties(EmployeeSeedProperties.class)
 public class UserQrConfig {
 
   @Bean
@@ -92,17 +93,14 @@ public class UserQrConfig {
     return new DeviceManagementService(registry, audit, tx, clock);
   }
 
-  /** Seed loaded at start-up; updatedAt = start-up time so a first sync (since EPOCH) gets all. */
   @Bean
-  IEmployeeDirectory employeeDirectory(EmployeeSeedProperties seed, IClock clock) {
-    var now = clock.now();
-    return new InMemoryEmployeeDirectory(
-        seed.employees().stream()
-            .map(
-                e ->
-                    new IEmployeeDirectory.Eligibility(
-                        e.employeeUuid(), e.active(), e.factories(), now))
-            .toList());
+  IEmployeeEligibility employeeEligibility(
+      IEmployeeDirectory employees,
+      IDeviceKeyRegistry registry,
+      IAuditLog audit,
+      ITransactionRunner tx,
+      IClock clock) {
+    return new EmployeeEligibilityService(employees, registry, audit, tx, clock);
   }
 
   @Bean
@@ -120,6 +118,16 @@ public class UserQrConfig {
     }
 
     @Bean
+    IEmployeeDirectory employeeDirectory(
+        @Value("${tmc.qr.employee-seed-file:}") String seedFile,
+        @Value("${tmc.qr.employee-seed-enabled:true}") boolean seedEnabled,
+        IClock clock) {
+      var directory = new InMemoryEmployeeDirectory();
+      EmployeeSeedLoader.seedIfAbsent(directory, seedFile, seedEnabled, clock.now());
+      return directory;
+    }
+
+    @Bean
     IAuditLog auditLog() {
       return new LoggingAuditLog();
     }
@@ -131,9 +139,9 @@ public class UserQrConfig {
   }
 
   /**
-   * PostgreSQL: audit becomes AuditRecorded through the outbox table (C-08). Registry, outbox and
-   * transaction manager share the one DataSource, so a device change and its audit row commit
-   * together.
+   * PostgreSQL: audit becomes AuditRecorded through the outbox table (C-08), and employee
+   * eligibility lives in table {@code employees} (C-02). Registry, directory, outbox and
+   * transaction manager share the one DataSource, so changes and their audit rows commit together.
    */
   @Configuration
   @Profile("!inmem & !local")
@@ -141,6 +149,17 @@ public class UserQrConfig {
     @Bean
     IDeviceKeyRegistry deviceKeyRegistry(JdbcTemplate jdbc) {
       return new JdbcDeviceKeyRegistry(jdbc);
+    }
+
+    @Bean
+    IEmployeeDirectory employeeDirectory(
+        JdbcTemplate jdbc,
+        @Value("${tmc.qr.employee-seed-file:}") String seedFile,
+        @Value("${tmc.qr.employee-seed-enabled:true}") boolean seedEnabled,
+        IClock clock) {
+      var directory = new JdbcEmployeeDirectory(jdbc);
+      EmployeeSeedLoader.seedIfAbsent(directory, seedFile, seedEnabled, clock.now());
+      return directory;
     }
 
     @Bean

@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import vn.tmc.identity.adapter.out.crypto.NimbusAccessTokenIssuer;
 import vn.tmc.identity.adapter.out.crypto.SigningKeys;
+import vn.tmc.identity.adapter.out.crypto.TotpMfaVerifier;
 import vn.tmc.identity.adapter.out.inmem.InMemoryAccountRepository;
 import vn.tmc.identity.adapter.out.inmem.Pbkdf2PasswordVerifier;
 import vn.tmc.identity.adapter.out.messaging.OutboxAuditLog;
@@ -52,6 +53,12 @@ public class IdentityConfig {
             "admin1",
             Set.of(Role.SYSTEM_ADMIN),
             Set.of(Account.ALL_FACTORIES)));
+    repo.save(
+        new Account(
+            UUID.fromString("0192a1c0-0000-7000-8000-00000000a003"),
+            "hr1",
+            Set.of(Role.HR_STAFF),
+            Set.of(Account.ALL_FACTORIES)));
     // Employees for the employee app; same UUIDs as gate-station and user-qr (DevSeed).
     for (var e : DevSeed.EMPLOYEES) {
       repo.save(new Account(e.employeeUuid(), e.username(), Set.of(Role.EMPLOYEE), e.factories()));
@@ -67,13 +74,27 @@ public class IdentityConfig {
     }
     verifier.set("supervisor1", DevSeed.DEV_PASSWORD);
     verifier.set("admin1", DevSeed.DEV_PASSWORD);
+    verifier.set("hr1", DevSeed.DEV_PASSWORD);
     return verifier;
   }
 
-  /** TODO Team C: real TOTP. Until then MFA always fails closed. */
+  /**
+   * RFC 6238 TOTP verifier (C-05). Dev secrets for {@code admin1} and {@code hr1} are registered
+   * only when {@code tmc.identity.mfa.dev-secrets-enabled=true} (profiles {@code local}, {@code
+   * inmem}); on the default profile the verifier starts empty and fails closed unless secrets are
+   * provisioned explicitly.
+   */
   @Bean
-  IMfaVerifier mfa() {
-    return (username, code) -> false;
+  IMfaVerifier mfa(
+      IClock clock,
+      @Value("${tmc.identity.mfa.dev-secrets-enabled:false}") boolean devSecretsEnabled) {
+    var verifier = new TotpMfaVerifier(clock);
+    if (devSecretsEnabled) {
+      verifier.registerBase32("admin1", DevSeed.DEV_ADMIN_TOTP_SECRET);
+      verifier.registerBase32("hr1", DevSeed.DEV_HR_TOTP_SECRET);
+      LOG.warn("MFA dev TOTP secrets enabled for admin1 and hr1 (dev profiles only)");
+    }
+    return verifier;
   }
 
   /** Login audit through the outbox (C-08): in memory on inmem/local, PostgreSQL by default. */
