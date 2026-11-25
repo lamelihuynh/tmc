@@ -300,10 +300,12 @@ class PersistenceAndBrokerIT {
     var attempts = new JdbcAttemptRepository(jdbc);
     var transactions = new JdbcAttendanceTransactionRepository(jdbc);
     var realOutbox = new JdbcOutboxRepository(jdbc, mapper);
+    var capturedMessageId = new java.util.concurrent.atomic.AtomicReference<UUID>();
     IOutboxRepository failingAfterWriteOutbox =
         new IOutboxRepository() {
           @Override
           public void add(EventEnvelope envelope) {
+            capturedMessageId.set(envelope.messageId());
             realOutbox.add(envelope);
             throw new IllegalStateException("simulated failure after outbox write");
           }
@@ -354,10 +356,17 @@ class PersistenceAndBrokerIT {
         .isInstanceOf(IllegalStateException.class)
         .hasMessage("simulated failure after outbox write");
 
+    assertThat(capturedMessageId.get()).isNotNull();
     assertThat(attempts.findById(attemptId)).isEmpty();
     assertThat(
             jdbc.queryForObject(
-                "SELECT count(*) FROM outbox_events WHERE envelope->>'aggregateId' = ?",
+                "SELECT count(*) FROM outbox_events WHERE message_id = ?",
+                Integer.class,
+                capturedMessageId.get()))
+        .isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_events WHERE envelope->>'eventId' = ?",
                 Integer.class,
                 attemptId.toString()))
         .isZero();
