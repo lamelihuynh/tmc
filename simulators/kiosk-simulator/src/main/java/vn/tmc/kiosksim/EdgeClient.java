@@ -29,7 +29,17 @@ public interface EdgeClient {
 
   record OfflineResult(UUID attemptId, String outcome, String detail) {}
 
-  record SyncBundle(List<Journal.Gate> gates, List<Journal.DeviceKey> deviceKeys) {}
+  record Employee(UUID employeeUuid, String status, List<String> factories) {}
+
+  record SyncBundle(
+      List<Journal.Gate> gates,
+      List<Journal.DeviceKey> deviceKeys,
+      List<Employee> employees) {
+
+    public SyncBundle(List<Journal.Gate> gates, List<Journal.DeviceKey> deviceKeys) {
+      this(gates, deviceKeys, null);
+    }
+  }
 
   /**
    * @param tokenOrHash the raw token for a first attempt, the stored hash for a retry of an
