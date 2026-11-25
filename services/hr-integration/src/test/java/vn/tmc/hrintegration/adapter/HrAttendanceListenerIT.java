@@ -49,10 +49,13 @@ class HrAttendanceListenerIT {
     r.add("spring.rabbitmq.port", RABBIT::getAmqpPort);
     r.add("spring.rabbitmq.username", RABBIT::getAdminUsername);
     r.add("spring.rabbitmq.password", RABBIT::getAdminPassword);
+    r.add("tmc.dlq.initial-delay-ms", () -> "100");
+    r.add("tmc.dlq.poll-ms", () -> "200");
   }
 
   @Autowired RabbitTemplate rabbit;
   @Autowired JdbcTemplate jdbc;
+  @Autowired io.micrometer.core.instrument.MeterRegistry metrics;
 
   private void publish(String source, EventEnvelope e) {
     rabbit.convertAndSend(TmcExchange.NAME, TmcExchange.routingKey(source, e.eventType()), e);
@@ -111,14 +114,23 @@ class HrAttendanceListenerIT {
 
   @Test
   void should_park_a_message_that_keeps_failing_in_the_dead_letter_queue() {
-    // no employeeUuid: the use case cannot build the HR submission and throws every time
+    var queue = "tmc.hr.attendance.dlq";
     var poison = event("AttendanceConfirmed", Ids.uuidV7(), 1, Map.of("direction", "ENTRY"));
 
     publish("attendance", poison);
 
     await()
         .atMost(Duration.ofSeconds(30))
-        .until(() -> rabbit.receive("tmc.hr.attendance.dlq", 200) != null);
-    assertThat(processed(poison.messageId())).isZero(); // marker rolled back with the failure
+        .untilAsserted(
+            () -> {
+              var gauge = metrics.get("tmc.rabbitmq.dlq.depth").tag("queue", queue).gauge();
+              assertThat(gauge.value()).isEqualTo(1.0);
+
+              Integer remaining =
+                  rabbit.execute(channel -> channel.queueDeclarePassive(queue).getMessageCount());
+              assertThat(remaining).isEqualTo(1);
+            });
+
+    assertThat(processed(poison.messageId())).isZero();
   }
 }
