@@ -14,6 +14,12 @@ import vn.tmc.attendance.domain.AttemptStatus;
 public interface IAttemptRepository {
   Optional<AccessAttempt> findById(UUID attemptId);
 
+  /**
+   * Loads and exclusively locks the aggregate until the surrounding transaction ends. HR
+   * verification and correction use this to allocate one confirmation or revision at a time.
+   */
+  Optional<AccessAttempt> findByIdForUpdate(UUID attemptId);
+
   /** Insert or replace by attempt id. */
   void save(AccessAttempt attempt);
 

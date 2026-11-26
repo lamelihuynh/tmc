@@ -34,11 +34,11 @@ public class InMemoryProfileConfig {
   }
 
   @Bean
-  IAttendanceTransactionRepository transactions() {
-    return new InMemoryAttendanceTransactionRepository();
+  IAttendanceTransactionRepository transactions(IAttendanceCorrectionRepository corrections) {
+    return new InMemoryAttendanceTransactionRepository(corrections);
   }
 
-  /** Ready for B-06 (correction use case); nothing writes corrections yet. */
+  /** Append-only history used by B-06 and the effective last-direction query. */
   @Bean
   IAttendanceCorrectionRepository corrections() {
     return new InMemoryAttendanceCorrectionRepository();

@@ -24,7 +24,8 @@ import vn.tmc.platform.kernel.ReasonCode;
 public class JdbcAttemptRepository implements IAttemptRepository {
   private static final String COLUMNS =
       "attempt_id, employee_uuid, gate_id, factory_code, direction, jti, source, scanned_at, "
-          + "status, reason_code, anomaly, updated_at, version";
+          + "status, reason_code, anomaly, updated_at, version, manual_verified_by, "
+          + "manual_verification_reason, manual_verified_at";
 
   private static final RowMapper<AccessAttempt> MAPPER =
       (rs, n) ->
@@ -41,7 +42,12 @@ public class JdbcAttemptRepository implements IAttemptRepository {
               enumOrNull(ReasonCode.class, rs.getString("reason_code")),
               enumOrNull(Anomaly.class, rs.getString("anomaly")),
               rs.getTimestamp("updated_at").toInstant(),
-              rs.getLong("version"));
+              rs.getLong("version"),
+              rs.getObject("manual_verified_by", UUID.class),
+              rs.getString("manual_verification_reason"),
+              rs.getTimestamp("manual_verified_at") == null
+                  ? null
+                  : rs.getTimestamp("manual_verified_at").toInstant());
 
   private final JdbcTemplate jdbc;
 
@@ -59,27 +65,54 @@ public class JdbcAttemptRepository implements IAttemptRepository {
   }
 
   @Override
+  public Optional<AccessAttempt> findByIdForUpdate(UUID attemptId) {
+    return jdbc
+        .query(
+            "SELECT " + COLUMNS + " FROM access_attempts WHERE attempt_id = ? FOR UPDATE",
+            MAPPER,
+            attemptId)
+        .stream()
+        .findFirst();
+  }
+
+  @Override
   public void save(AccessAttempt a) {
-    jdbc.update(
-        "INSERT INTO access_attempts ("
-            + COLUMNS
-            + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
-            + "ON CONFLICT (attempt_id) DO UPDATE SET status = EXCLUDED.status, "
-            + "reason_code = EXCLUDED.reason_code, anomaly = EXCLUDED.anomaly, "
-            + "updated_at = EXCLUDED.updated_at, version = EXCLUDED.version",
-        a.attemptId(),
-        a.employeeUuid(),
-        a.gateId(),
-        a.factoryCode(),
-        nameOrNull(a.direction()),
-        a.jti(),
-        a.source().name(),
-        Timestamp.from(a.scannedAt()),
-        a.status().name(),
-        nameOrNull(a.reasonCode()),
-        nameOrNull(a.anomaly()),
-        Timestamp.from(a.updatedAt()),
-        a.version());
+    int stored =
+        jdbc.update(
+            "INSERT INTO access_attempts ("
+                + COLUMNS
+                + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                + "ON CONFLICT (attempt_id) DO UPDATE SET status = EXCLUDED.status, "
+                + "reason_code = EXCLUDED.reason_code, anomaly = EXCLUDED.anomaly, "
+                + "updated_at = EXCLUDED.updated_at, version = EXCLUDED.version, "
+                + "manual_verified_by = EXCLUDED.manual_verified_by, "
+                + "manual_verification_reason = EXCLUDED.manual_verification_reason, "
+                + "manual_verified_at = EXCLUDED.manual_verified_at "
+                + "WHERE access_attempts.version <= EXCLUDED.version "
+                + "AND (access_attempts.manual_verified_at IS NULL "
+                + "OR (access_attempts.manual_verified_by IS NOT DISTINCT FROM EXCLUDED.manual_verified_by "
+                + "AND access_attempts.manual_verification_reason IS NOT DISTINCT FROM EXCLUDED.manual_verification_reason "
+                + "AND access_attempts.manual_verified_at IS NOT DISTINCT FROM EXCLUDED.manual_verified_at))",
+            a.attemptId(),
+            a.employeeUuid(),
+            a.gateId(),
+            a.factoryCode(),
+            nameOrNull(a.direction()),
+            a.jti(),
+            a.source().name(),
+            Timestamp.from(a.scannedAt()),
+            a.status().name(),
+            nameOrNull(a.reasonCode()),
+            nameOrNull(a.anomaly()),
+            Timestamp.from(a.updatedAt()),
+            a.version(),
+            a.manualVerifiedBy(),
+            a.manualVerificationReason(),
+            a.manualVerifiedAt() == null ? null : Timestamp.from(a.manualVerifiedAt()));
+    if (stored == 0) {
+      // A stale gate/recovery snapshot must roll back its outbox as well, never erase HR evidence.
+      throw new IllegalStateException("attempt changed since it was loaded");
+    }
   }
 
   @Override
