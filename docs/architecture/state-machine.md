@@ -2,6 +2,8 @@
 
 Nguồn sự thật là enum `AttemptStatus` và aggregate `AccessAttempt` trong `services/attendance/.../domain`. Mọi chuyển trạng thái đi qua các hàm của aggregate; chuyển sai ném `IllegalAttemptTransitionException` (HTTP 409).
 
+**Xác minh thủ công B-07:** `MANUAL` đã `COMMITTED` vẫn chưa tính công cho đến khi HR xác minh. `AccessAttempt.verifyManual` giữ nguyên trạng thái `COMMITTED`, lưu `manualVerifiedBy`, `manualVerificationReason`, `manualVerifiedAt` và tăng version đúng một lần. Trong cùng transaction, use case thêm bản công, `AttendanceConfirmed` và `AuditRecorded`. Gọi lại trả bằng chứng đã lưu. B-06 sau đó có thể thêm revision hiệu chỉnh; không đổi trạng thái hoặc sửa dữ liệu gốc. `ERROR`, `UNKNOWN`, lượt bất thường và lượt chưa xác định nhân viên/chiều không được xác minh qua B-07.
+
 ```mermaid
 stateDiagram-v2
   [*] --> VALIDATED: Edge nhan luot da xac thuc

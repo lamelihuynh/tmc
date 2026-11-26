@@ -1,11 +1,16 @@
 openapi: 3.0.3
 info:
-  title: TMC Attendance (nội bộ, cùng node biên với gate-station)
-  version: 0.2.0
+  title: TMC Attendance (API nội bộ và hiệu chỉnh HR)
+  version: 0.3.0
   description: |
-    Chỉ gate-station gọi. Không qua gateway công khai; bảo vệ bằng mTLS giữa các service (D-11).
-    **Mọi lệnh idempotent theo attemptId** (ADR-05): gửi lại trả kết quả đã lưu, `duplicate=true`, không tạo thêm gì.
-    Nguồn mã: `services/attendance/.../adapter/in/rest/InternalAttendanceController`.
+    `/internal/v1/**` chỉ gate-station gọi, không qua gateway công khai; bảo vệ bằng mTLS giữa các service (D-11).
+    Lệnh nội bộ idempotent theo attemptId (ADR-05): gửi lại trả `duplicate=true`, không tạo thêm gì.
+    `/hr/v1/**` yêu cầu Bearer JWT của identity, vai HR_STAFF và phạm vi nhà máy tương ứng (với thao tác ghi).
+    Hàng đợi bất thường B-03 (`GET /hr/v1/anomalies`) trả về các lượt bất thường offline chưa xử lý.
+    Hiệu chỉnh B-06 dùng correctionId làm khóa; xác minh B-07 dùng attemptId. Gửi lại trả `idempotentReplay=true`.
+    Dev headers chỉ được phép ở profile local/inmem; Authorization có mặt thì tuyệt đối không fallback sang dev headers.
+    Người sửa/xác minh luôn lấy từ subject đã xác thực, không nhận từ request body.
+    Nguồn mã: InternalAttendanceController, HrAttendanceController và các input port tương ứng.
 servers:
   - url: http://localhost:8082
 paths:
@@ -102,10 +107,12 @@ paths:
                     detail: { type: string, nullable: true }
   /hr/v1/anomalies:
     get:
+      operationId: listAnomalies
       summary: Hàng đợi bất thường offline cho HR (UC-09, B-03)
       description: |
         Liệt kê các lượt quét có cờ bất thường (`TOKEN_REUSED_OFFLINE`, `ANTI_PASSBACK_OFFLINE`) chưa xử lý,
         sắp xếp theo thời gian quét tăng dần. Yêu cầu vai trò `HR_STAFF`.
+      security: [{ bearerAuth: [] }]
       parameters:
         - { name: factory, in: query, required: false, schema: { type: string }, description: "Lọc theo mã nhà máy (ví dụ BD, LA)" }
         - { name: from, in: query, required: false, schema: { type: string, format: date-time }, description: "Từ thời điểm quét (bao gồm)" }
@@ -119,11 +126,131 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/AnomalyView" }
-        "403": { description: Chưa xác thực hoặc không có vai trò HR_STAFF }
+        "403": { description: FORBIDDEN; chưa xác thực hoặc không có vai trò HR_STAFF }
+  /hr/v1/attendance/{attemptId}/corrections:
+    post:
+      operationId: correctAttendance
+      summary: HR hiệu chỉnh giờ hoặc chiều của một lượt đã tính công (B-06, FR-26)
+      description: |
+        Không sửa access_attempts hoặc attendance_transactions gốc. Thêm một revision liên kết bản gốc
+        và hai dòng outbox AttendanceCorrected, AuditRecorded trong cùng transaction.
+        Khóa lượt gốc trong database để cấp revision tuần tự khi nhiều yêu cầu đồng thời.
+        Cùng correctionId, cùng nội dung và cùng người sửa trả lại revision cũ (kể cả khi đã có revision mới hơn).
+        Dùng lại correctionId với nội dung, người sửa hoặc lượt gốc khác trả 409.
+        Lượt thủ công phải được xác minh bằng B-07 trước khi hiệu chỉnh; chưa tính công hoặc bất thường trả 409.
+        scannedAt và correctedAt chuẩn hóa đến microsecond để khớp PostgreSQL.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/HrAttemptId" }
+        - { $ref: "#/components/parameters/CorrelationId" }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CorrectionRequest" } } }
+      responses:
+        "200":
+          description: Revision mới hoặc kết quả đã lưu của cùng yêu cầu
+          content: { application/json: { schema: { $ref: "#/components/schemas/CorrectionView" } } }
+        "400": { description: Thiếu trường, UUID/chiều/thời gian sai, lý do không phải mã hợp lệ }
+        "403": { description: FORBIDDEN; chưa xác thực, sai vai trò hoặc ngoài phạm vi. HR giới hạn phạm vi cũng nhận lỗi này với lượt không tồn tại }
+        "404": { description: ATTEMPT_NOT_FOUND; chỉ trả khi HR có phạm vi toàn bộ nhà máy }
+        "409": { description: CORRECTION_CONFLICT khi xung đột khóa; ATTENDANCE_NOT_COUNTED khi chưa có công hợp lệ }
+  /hr/v1/attempts/{attemptId}/verify-manual:
+    post:
+      operationId: verifyManualAttendance
+      summary: HR xác minh một lượt mở thủ công để tính công (B-07, FR-20)
+      description: |
+        Chỉ áp dụng nguồn MANUAL, trạng thái COMMITTED, không có anomaly, có employeeUuid và direction.
+        Không gửi lệnh mở cổng. Giữ COMMITTED; lưu UUID HR, mã lý do và thời điểm xác minh,
+        tăng version một lần rồi ghi attendance_transactions, AttendanceConfirmed và AuditRecorded cùng transaction.
+        attemptId là khóa lũy đẳng: xác minh lại trả bằng chứng gốc, không đổi người/lý do/thời gian,
+        không thêm công hoặc sự kiện. Quyền và phạm vi vẫn được kiểm trước mỗi lần trả kết quả.
+        aggregateVersion là phiên bản của lần xác minh, không phải revision hiệu chỉnh B-06 sau đó.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/HrAttemptId" }
+        - { $ref: "#/components/parameters/CorrelationId" }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/VerificationRequest" } } }
+      responses:
+        "200":
+          description: Xác minh mới hoặc bằng chứng xác minh đã có
+          content: { application/json: { schema: { $ref: "#/components/schemas/VerificationResult" } } }
+        "400": { description: Thiếu trường hoặc lý do không phải mã hợp lệ }
+        "403": { description: FORBIDDEN; chưa xác thực, sai vai trò hoặc ngoài phạm vi. HR giới hạn phạm vi cũng nhận lỗi này với lượt không tồn tại }
+        "404": { description: ATTEMPT_NOT_FOUND; chỉ trả khi HR có phạm vi toàn bộ nhà máy }
+        "409": { description: MANUAL_ATTENDANCE_NOT_VERIFIABLE; không phải MANUAL, chưa COMMITTED, có anomaly hoặc thiếu nhân viên/chiều }
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   parameters:
     Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    HrAttemptId: { name: attemptId, in: path, required: true, schema: { type: string, format: uuid } }
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema: { type: string }
+      description: Ưu tiên hơn correlationId trong body khi có giá trị; đi vào hai sự kiện outbox
   schemas:
+    HrReason:
+      type: string
+      minLength: 2
+      maxLength: 64
+      pattern: '^[A-Z][A-Z0-9_]{1,63}$'
+      description: Mã lý do UPPER_SNAKE_CASE, không nhập tên người hoặc văn bản tự do
+      example: SUPERVISOR_CONFIRMED
+    CorrectionRequest:
+      type: object
+      required: [correctionId, direction, scannedAt, reason]
+      properties:
+        correctionId: { type: string, format: uuid, description: Khóa lũy đẳng do client sinh và giữ nguyên khi thử lại }
+        direction: { type: string, enum: [ENTRY, EXIT] }
+        scannedAt: { type: string, format: date-time }
+        reason: { $ref: "#/components/schemas/HrReason" }
+        correlationId: { type: string, nullable: true }
+    AttendanceCorrection:
+      type: object
+      required: [correctionId, originalAttemptId, revision, employeeUuid, direction, scannedAt, previousDirection, previousScannedAt, reason, correctedBy, source, correctedAt]
+      properties:
+        correctionId: { type: string, format: uuid }
+        originalAttemptId: { type: string, format: uuid }
+        revision: { type: integer, minimum: 1 }
+        employeeUuid: { type: string, format: uuid }
+        direction: { type: string, enum: [ENTRY, EXIT] }
+        scannedAt: { type: string, format: date-time }
+        previousDirection: { type: string, enum: [ENTRY, EXIT] }
+        previousScannedAt: { type: string, format: date-time }
+        reason: { $ref: "#/components/schemas/HrReason" }
+        correctedBy: { type: string, format: uuid, description: Subject của HR đã xác thực }
+        source: { type: string, enum: [ONLINE, OFFLINE, MANUAL] }
+        correctedAt: { type: string, format: date-time }
+    CorrectionView:
+      type: object
+      required: [correction, idempotentReplay, aggregateVersion]
+      properties:
+        correction: { $ref: "#/components/schemas/AttendanceCorrection" }
+        idempotentReplay: { type: boolean }
+        aggregateVersion: { type: integer, format: int64, description: Phiên bản lần xác nhận lượt gốc cộng revision }
+    VerificationRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { $ref: "#/components/schemas/HrReason" }
+        correlationId: { type: string, nullable: true }
+    VerificationResult:
+      type: object
+      required: [attemptId, verifiedBy, reason, verifiedAt, aggregateVersion, idempotentReplay]
+      properties:
+        attemptId: { type: string, format: uuid }
+        verifiedBy: { type: string, format: uuid, description: Subject của HR xác minh lần đầu }
+        reason: { $ref: "#/components/schemas/HrReason" }
+        verifiedAt: { type: string, format: date-time }
+        aggregateVersion: { type: integer, format: int64 }
+        idempotentReplay: { type: boolean }
     AttemptRequest:
       type: object
       required: [attemptId, employeeUuid, gateId, factoryCode, direction, jti, scannedAt]

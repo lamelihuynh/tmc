@@ -19,6 +19,9 @@ spring:
     publisher-returns: true
 
 tmc:
+  security:
+    jwks-url: ${IDENTITY_JWKS_URL:http://localhost:8087/.well-known/jwks.json}
+    allow-dev-headers: ${TMC_ALLOW_DEV_HEADERS:false}
   attendance:
     gate-station-url: ${GATE_STATION_URL:http://localhost:8081}
     batch-size: 100

@@ -2,6 +2,7 @@ package vn.tmc.attendance.application.usecase;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import vn.tmc.attendance.application.port.in.GateResult;
 import vn.tmc.attendance.domain.AccessAttempt;
 import vn.tmc.attendance.domain.AttendanceCorrection;
@@ -43,14 +44,42 @@ public class AttendanceEventFactory {
     return build("AuditRecorded", a, correlationId, payload);
   }
 
+  /** HR audit actor and reason are server-controlled UUID/code values, never names or free text. */
+  public EventEnvelope hrAuditRecorded(
+      AccessAttempt attempt,
+      long aggregateVersion,
+      String action,
+      UUID actor,
+      String reason,
+      UUID operationId,
+      String correlationId) {
+    Map<String, Object> payload = basePayload(attempt);
+    payload.put("action", action);
+    payload.put("actor", actor.toString());
+    payload.put("reason", reason);
+    payload.put("operationId", operationId.toString());
+    return new EventEnvelope(
+        Ids.uuidV7(),
+        "AuditRecorded",
+        1,
+        attempt.attemptId(),
+        aggregateVersion,
+        clock.now(),
+        correlationId,
+        SOURCE,
+        attempt.factoryCode(),
+        attempt.gateId(),
+        payload);
+  }
+
   /**
    * AttendanceCorrected (AsyncAPI channel attendance.AttendanceCorrected). {@code eventId} is the
    * original attempt id so consumers find the row to replace. {@code aggregateVersion} is the
    * version the original attempt had when it was confirmed plus the revision, so it is larger than
    * every earlier event of the same eventId and consumers keep the highest one.
    *
-   * @param originalVersion {@link AccessAttempt#version()} of the original attempt (it no longer
-   *     changes once COMMITTED)
+   * @param originalVersion {@link AccessAttempt#version()} at attendance confirmation (for a manual
+   *     pass, after HR verification); subsequent corrections do not change it
    */
   public EventEnvelope attendanceCorrected(
       AttendanceTransaction original,

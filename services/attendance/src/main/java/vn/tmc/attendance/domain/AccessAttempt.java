@@ -1,7 +1,9 @@
 package vn.tmc.attendance.domain;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import vn.tmc.platform.kernel.ReasonCode;
 
 /**
@@ -12,6 +14,7 @@ import vn.tmc.platform.kernel.ReasonCode;
  * <p>No raw QR token is stored: only the token id (jti) needed for replay detection (ADR-09).
  */
 public final class AccessAttempt {
+  private static final Pattern REASON_CODE = Pattern.compile("[A-Z][A-Z0-9_]{1,63}");
   private final UUID attemptId;
   private final UUID employeeUuid;
   private final String gateId;
@@ -26,6 +29,9 @@ public final class AccessAttempt {
   private Anomaly anomaly;
   private Instant updatedAt;
   private long version;
+  private UUID manualVerifiedBy;
+  private String manualVerificationReason;
+  private Instant manualVerifiedAt;
 
   private AccessAttempt(
       UUID attemptId,
@@ -114,6 +120,45 @@ public final class AccessAttempt {
         version);
   }
 
+  /** Restores the immutable HR verification evidence introduced by B-07. */
+  public static AccessAttempt restore(
+      UUID attemptId,
+      UUID employeeUuid,
+      String gateId,
+      String factoryCode,
+      Direction direction,
+      String jti,
+      AttemptSource source,
+      Instant scannedAt,
+      AttemptStatus status,
+      ReasonCode reasonCode,
+      Anomaly anomaly,
+      Instant updatedAt,
+      long version,
+      UUID manualVerifiedBy,
+      String manualVerificationReason,
+      Instant manualVerifiedAt) {
+    var attempt =
+        restore(
+            attemptId,
+            employeeUuid,
+            gateId,
+            factoryCode,
+            direction,
+            jti,
+            source,
+            scannedAt,
+            status,
+            reasonCode,
+            anomaly,
+            updatedAt,
+            version);
+    attempt.manualVerifiedBy = manualVerifiedBy;
+    attempt.manualVerificationReason = manualVerificationReason;
+    attempt.manualVerifiedAt = manualVerifiedAt;
+    return attempt;
+  }
+
   public void reserve(Instant now) {
     transitionTo(AttemptStatus.RESERVED, now);
   }
@@ -151,6 +196,36 @@ public final class AccessAttempt {
   /** Marks an offline record that must not count as attendance until HR verifies it. */
   public void flagAnomaly(Anomaly anomaly) {
     this.anomaly = anomaly;
+  }
+
+  /**
+   * HR confirms the identity and attendance of an already opened manual pass (FR-20). The gate
+   * remains COMMITTED: verification changes eligibility, never re-arms or reopens the turnstile.
+   * The first verifier and reason remain immutable when the same attempt is verified again.
+   *
+   * @return true only for the first verification
+   */
+  public boolean verifyManual(UUID verifiedBy, String reason, Instant now) {
+    if (verifiedBy == null || reason == null || !REASON_CODE.matcher(reason).matches()) {
+      throw new IllegalArgumentException("HR subject and UPPER_SNAKE_CASE reason are required");
+    }
+    Objects.requireNonNull(now, "now");
+    if (source != AttemptSource.MANUAL
+        || status != AttemptStatus.COMMITTED
+        || anomaly != null
+        || employeeUuid == null
+        || direction == null) {
+      throw new ManualAttendanceNotVerifiableException();
+    }
+    if (manualVerifiedAt != null) {
+      return false;
+    }
+    manualVerifiedBy = verifiedBy;
+    manualVerificationReason = reason;
+    manualVerifiedAt = now;
+    updatedAt = now;
+    version++;
+    return true;
   }
 
   private void transitionTo(AttemptStatus next, Instant now) {
@@ -214,11 +289,25 @@ public final class AccessAttempt {
     return version;
   }
 
+  public UUID manualVerifiedBy() {
+    return manualVerifiedBy;
+  }
+
+  public String manualVerificationReason() {
+    return manualVerificationReason;
+  }
+
+  public Instant manualVerifiedAt() {
+    return manualVerifiedAt;
+  }
+
   /**
    * True when this attempt is a counted pass: committed, no anomaly, not a manual open awaiting
    * verification.
    */
   public boolean countsAsAttendance() {
-    return status == AttemptStatus.COMMITTED && anomaly == null && source != AttemptSource.MANUAL;
+    return status == AttemptStatus.COMMITTED
+        && anomaly == null
+        && (source != AttemptSource.MANUAL || manualVerifiedAt != null);
   }
 }

@@ -56,7 +56,7 @@ class ActuatorMetricsApiTest {
             "BD",
             "BD-GATE-01",
             null));
-    outbox.add(
+    var stalePending =
         new EventEnvelope(
             Ids.uuidV7(),
             "AccessAttemptRecorded",
@@ -68,7 +68,8 @@ class ActuatorMetricsApiTest {
             "attendance",
             "BD",
             "BD-GATE-01",
-            null));
+            null);
+    outbox.add(stalePending);
     var publishedStale =
         new EventEnvelope(
             Ids.uuidV7(),
@@ -118,6 +119,20 @@ class ActuatorMetricsApiTest {
     mvc.perform(get("/actuator/metrics/" + AttendanceMetricsConfig.GATE_UNKNOWN_METRIC))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.measurements[0].value").value(1.0));
+
+    // When state resolves, /actuator/metrics immediately reflects the drop back to 0.0
+    outbox.markPublished(stalePending.messageId());
+    unknown.gateOpened(now);
+    unknown.commit(now);
+    attempts.save(unknown);
+
+    mvc.perform(get("/actuator/metrics/" + AttendanceMetricsConfig.OUTBOX_STALE_METRIC))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.measurements[0].value").value(0.0));
+
+    mvc.perform(get("/actuator/metrics/" + AttendanceMetricsConfig.GATE_UNKNOWN_METRIC))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.measurements[0].value").value(0.0));
 
     // Sensitive management endpoints stay unexposed
     mvc.perform(get("/actuator/env")).andExpect(status().isNotFound());

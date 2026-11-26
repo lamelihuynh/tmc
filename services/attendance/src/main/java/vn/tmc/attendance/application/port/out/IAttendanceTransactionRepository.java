@@ -13,7 +13,13 @@ public interface IAttendanceTransactionRepository {
    */
   boolean saveIfAbsent(AttendanceTransaction transaction);
 
-  /** The employee's latest counted pass strictly before {@code at}. */
+  /** The immutable original record; corrections are stored separately. */
+  Optional<AttendanceTransaction> findByAttemptId(UUID attemptId);
+
+  /**
+   * The employee's latest counted pass strictly before {@code at}, using each pass's latest
+   * correction for both ordering and the cutoff (B-05, B-06).
+   */
   Optional<AttendanceTransaction> latestBefore(UUID employeeUuid, Instant at);
 
   /** Direction of the employee's latest counted pass strictly before {@code at}. */
