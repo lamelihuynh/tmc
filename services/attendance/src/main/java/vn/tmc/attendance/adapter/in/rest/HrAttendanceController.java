@@ -48,8 +48,7 @@ public class HrAttendanceController {
       String correlationId) {}
 
   public record VerificationRequest(
-      @NotBlank @Pattern(regexp = "[A-Z][A-Z0-9_]{1,63}") String reason,
-      String correlationId) {}
+      @NotBlank @Pattern(regexp = "[A-Z][A-Z0-9_]{1,63}") String reason, String correlationId) {}
 
   @PostMapping("/attendance/{attemptId}/corrections")
   public CorrectionView correct(

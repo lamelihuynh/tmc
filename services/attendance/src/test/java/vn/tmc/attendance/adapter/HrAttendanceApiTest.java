@@ -39,8 +39,7 @@ import vn.tmc.platform.security.jwt.TestTokens;
 class HrAttendanceApiTest {
   private static final Instant SCANNED_AT = Instant.parse("2026-11-20T07:20:00Z");
   private static final UUID HR = UUID.fromString("0192a1c0-0000-7000-8000-00000000a003");
-  private static final Principal CALLER =
-      TestTokens.principal(HR, DataScope.all(), Role.HR_STAFF);
+  private static final Principal CALLER = TestTokens.principal(HR, DataScope.all(), Role.HR_STAFF);
 
   @Autowired MockMvc mvc;
   @Autowired IAttendanceCommand commands;
@@ -277,7 +276,8 @@ class HrAttendanceApiTest {
   }
 
   @Test
-  void should_reject_uncounted_corrections_and_verification_of_online_attendance() throws Exception {
+  void should_reject_uncounted_corrections_and_verification_of_online_attendance()
+      throws Exception {
     mvc.perform(
             post("/hr/v1/attendance/{id}/corrections", completed(AttemptSource.MANUAL))
                 .header("Authorization", bearer())

@@ -34,16 +34,14 @@ import vn.tmc.platform.security.Role;
 /** B-06 acceptance and idempotency regressions, on real in-memory adapters without Spring. */
 class CorrectAttendanceUseCaseTest {
   private static final UUID HR_ID = UUID.fromString("0192a1c0-0000-7000-8000-00000000a003");
-  private static final Principal HR =
-      new Principal(HR_ID, Set.of(Role.HR_STAFF), DataScope.all());
+  private static final Principal HR = new Principal(HR_ID, Set.of(Role.HR_STAFF), DataScope.all());
   private final AttendanceFixture f = new AttendanceFixture();
   private final InMemoryAttendanceCorrectionRepository corrections =
       new InMemoryAttendanceCorrectionRepository();
   private final InMemoryAttendanceTransactionRepository transactions =
       new InMemoryAttendanceTransactionRepository(corrections);
   private final AttendanceCommandService command =
-      new AttendanceCommandService(
-          f.attempts, transactions, f.outbox, f.store, f.events, f.clock);
+      new AttendanceCommandService(f.attempts, transactions, f.outbox, f.store, f.events, f.clock);
   private final CorrectAttendanceUseCase useCase =
       new CorrectAttendanceUseCase(
           f.attempts, transactions, corrections, f.outbox, f.store, f.events, f.clock);
@@ -274,8 +272,7 @@ class CorrectAttendanceUseCaseTest {
         .isInstanceOf(AccessDeniedException.class);
     assertThatThrownBy(
             () ->
-                useCase.correct(
-                    scopedHr, correction(Ids.uuidV7(), Direction.EXIT, f.clock.now())))
+                useCase.correct(scopedHr, correction(Ids.uuidV7(), Direction.EXIT, f.clock.now())))
         .isInstanceOf(AccessDeniedException.class);
 
     assertThat(corrections.forAttempt(id)).isEmpty();

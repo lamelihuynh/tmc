@@ -78,8 +78,8 @@ public class AttendanceEventFactory {
    * version the original attempt had when it was confirmed plus the revision, so it is larger than
    * every earlier event of the same eventId and consumers keep the highest one.
    *
-   * @param originalVersion {@link AccessAttempt#version()} at attendance confirmation (for a
-   *     manual pass, after HR verification); subsequent corrections do not change it
+   * @param originalVersion {@link AccessAttempt#version()} at attendance confirmation (for a manual
+   *     pass, after HR verification); subsequent corrections do not change it
    */
   public EventEnvelope attendanceCorrected(
       AttendanceTransaction original,

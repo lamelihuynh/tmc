@@ -37,8 +37,7 @@ public class JdbcAttendanceCorrectionRepository implements IAttendanceCorrection
   @Override
   public Optional<AttendanceCorrection> findById(UUID correctionId) {
     return jdbc
-        .query(
-            "SELECT * FROM attendance_corrections WHERE correction_id = ?", MAPPER, correctionId)
+        .query("SELECT * FROM attendance_corrections WHERE correction_id = ?", MAPPER, correctionId)
         .stream()
         .findFirst();
   }

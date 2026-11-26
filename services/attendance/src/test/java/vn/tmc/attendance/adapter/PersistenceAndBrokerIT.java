@@ -314,7 +314,8 @@ class PersistenceAndBrokerIT {
     for (int failingInsert : new int[] {1, 2}) {
       var f = new HrDatabaseFixture();
       var id =
-          f.confirmed(AttemptSource.ONLINE, Ids.uuidV7(), Direction.ENTRY, HR_TIME.minusSeconds(60));
+          f.confirmed(
+              AttemptSource.ONLINE, Ids.uuidV7(), Direction.ENTRY, HR_TIME.minusSeconds(60));
       var original = f.transactions.findByAttemptId(id).orElseThrow();
       var request = correction(id, Direction.EXIT, HR_TIME.minusSeconds(90));
       int before = eventsFor(id).size();
@@ -445,7 +446,8 @@ class PersistenceAndBrokerIT {
     for (int failingInsert : new int[] {1, 2}) {
       var f = new HrDatabaseFixture();
       var id =
-          f.confirmed(AttemptSource.MANUAL, Ids.uuidV7(), Direction.ENTRY, HR_TIME.minusSeconds(60));
+          f.confirmed(
+              AttemptSource.MANUAL, Ids.uuidV7(), Direction.ENTRY, HR_TIME.minusSeconds(60));
       var beforeAttempt = f.attempts.findById(id).orElseThrow();
       int before = eventsFor(id).size();
       var service = f.verification(failAfterInsert(f.outbox, failingInsert));
@@ -562,7 +564,8 @@ class PersistenceAndBrokerIT {
               () ->
                   f.tx.inTransaction(
                       () -> {
-                        f.outbox.add(f.events.auditRecorded(invalid, "STALE_WRITE_TEST", "it-stale"));
+                        f.outbox.add(
+                            f.events.auditRecorded(invalid, "STALE_WRITE_TEST", "it-stale"));
                         f.attempts.save(invalid);
                         return null;
                       }))

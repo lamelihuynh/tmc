@@ -109,8 +109,7 @@ class ManualAttendanceVerificationTest {
 
     var replay =
         verify.verify(
-            anotherHr,
-            new VerifyManualAttendanceCommand(id, "SECOND_REVIEW", "new-correlation"));
+            anotherHr, new VerifyManualAttendanceCommand(id, "SECOND_REVIEW", "new-correlation"));
 
     assertThat(replay.idempotentReplay()).isTrue();
     assertThat(replay.verifiedAt()).isEqualTo(first.verifiedAt());

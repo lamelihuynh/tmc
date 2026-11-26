@@ -27,8 +27,7 @@ public class ApiExceptionHandler {
 
   @ExceptionHandler(CorrectionConflictException.class)
   ResponseEntity<Map<String, String>> correctionConflict(CorrectionConflictException e) {
-    return ResponseEntity.status(HttpStatus.CONFLICT)
-        .body(Map.of("error", "CORRECTION_CONFLICT"));
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "CORRECTION_CONFLICT"));
   }
 
   @ExceptionHandler(AttendanceNotCountedException.class)
