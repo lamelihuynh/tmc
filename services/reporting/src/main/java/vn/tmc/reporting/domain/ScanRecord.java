@@ -1,6 +1,7 @@
 package vn.tmc.reporting.domain;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -23,6 +24,9 @@ public record ScanRecord(
     Objects.requireNonNull(factoryCode, "factoryCode");
     Objects.requireNonNull(direction, "direction");
     Objects.requireNonNull(scannedAt, "scannedAt");
+    // PostgreSQL keeps microseconds: the same precision here keeps comparisons with stored rows
+    // exact
+    scannedAt = scannedAt.truncatedTo(ChronoUnit.MICROS);
   }
 
   /**
