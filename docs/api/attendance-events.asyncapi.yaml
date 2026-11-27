@@ -1,7 +1,7 @@
 asyncapi: 2.6.0
 info:
   title: TMC AttendanceEvents và AuditRecorded
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Sự kiện do `attendance` phát qua Transactional Outbox (ADR-04) lên RabbitMQ.
     **Exchange dùng chung (ADR-15):** một topic exchange bền `tmc.events`. Routing key = `<nguồn>.<eventType>`,
@@ -35,19 +35,19 @@ channels:
     subscribe:
       message: { $ref: "#/components/messages/GateResultRecorded" }
   "attendance.AttendanceConfirmed":
-    description: "Công đã xác nhận (cổng OPENED và đã COMMITTED, không phải lượt thủ công, không bất thường). Đây là dữ liệu duy nhất đủ điều kiện gửi HR"
+    description: "Công đã xác nhận (cổng OPENED và đã COMMITTED, không bất thường). Nguồn MANUAL chỉ phát sau khi HR_STAFF xác minh (B-07); lượt thủ công chờ xác minh không phát. Schema giữ nguyên"
     subscribe:
       message: { $ref: "#/components/messages/AttendanceConfirmed" }
   "attendance.AttendanceCorrected":
     description: |
-      Hiệu chỉnh một công đã xác nhận (HR sửa giờ hoặc chiều, story B-06). Hợp đồng ĐÃ CHỐT; việc phát do B-06 làm
-      (`AttendanceEventFactory.attendanceCorrected` đã có). `eventId` = `attemptId` của giao dịch gốc nên consumer
+      Hiệu chỉnh một công đã xác nhận (HR sửa giờ hoặc chiều, story B-06). `CorrectAttendanceUseCase` ghi bản
+      hiệu chỉnh và cả AttendanceCorrected/AuditRecorded trong cùng transaction. `eventId` = `attemptId` của giao dịch gốc nên consumer
       tìm được bản cần thay. `aggregateVersion` = phiên bản của lượt gốc lúc xác nhận + `revision`, luôn lớn hơn
       mọi sự kiện trước của cùng `eventId`: consumer áp bản có `aggregateVersion` lớn nhất, bỏ bản cũ hơn.
     subscribe:
       message: { $ref: "#/components/messages/AttendanceCorrected" }
   "attendance.AuditRecorded":
-    description: "Dấu vết bảo mật: từ chối truy cập, thả giữ chỗ, mở thủ công chờ xác minh, bất thường offline"
+    description: "Dấu vết bảo mật: từ chối truy cập, thả giữ chỗ, mở thủ công chờ xác minh, bất thường offline; B-06 ATTENDANCE_CORRECTED và B-07 MANUAL_ATTENDANCE_VERIFIED kèm actor, reason, operationId"
     subscribe:
       message: { $ref: "#/components/messages/AuditRecorded" }
   "user-qr.AuditRecorded":
@@ -141,6 +141,9 @@ components:
             anomaly: { type: string, enum: [TOKEN_REUSED_OFFLINE, ANTI_PASSBACK_OFFLINE] }
             gateResult: { type: string, enum: [OPENED, ERROR, UNKNOWN], description: "Chỉ ở GateResultRecorded" }
             action: { type: string, description: "Chỉ ở AuditRecorded, bắt buộc ở đó (ví dụ DEVICE_REVOKED, LOGIN_LOCKED, MANUAL_OPEN)" }
+            actor: { type: string, format: uuid, description: "Người thực hiện đã xác thực. B-06/B-07 lấy từ subject HR; employeeUuid vẫn là nhân viên được xử lý" }
+            reason: { type: string, pattern: '^[A-Z][A-Z0-9_]{1,63}$', description: "Mã lý do của thao tác HR, không chứa văn bản tự do" }
+            operationId: { type: string, format: uuid, description: "Khóa thao tác HR: correctionId ở B-06, attemptId ở B-07" }
             target: { type: string, description: "Chỉ ở AuditRecorded từ user-qr, identity, gate-station: id đối tượng (deviceId, gateId...)" }
             result: { type: string, description: "Chỉ ở AuditRecorded từ user-qr, identity, gate-station: OK, DENIED... hoặc chi tiết ngắn không PII" }
     CorrectionPayload:

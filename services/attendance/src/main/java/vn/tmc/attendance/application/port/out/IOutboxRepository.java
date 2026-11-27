@@ -1,5 +1,6 @@
 package vn.tmc.attendance.application.port.out;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import vn.tmc.platform.kernel.EventEnvelope;
@@ -19,4 +20,7 @@ public interface IOutboxRepository {
 
   /** The row stays PENDING; the counter feeds the backlog metric. */
   void recordFailure(UUID messageId);
+
+  /** Number of PENDING rows created strictly before {@code cutoff}. */
+  long countPendingOlderThan(Instant cutoff);
 }

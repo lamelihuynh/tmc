@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import vn.tmc.attendance.application.port.out.IAttendanceTransactionRepository;
 import vn.tmc.attendance.domain.AttemptSource;
 import vn.tmc.attendance.domain.AttendanceTransaction;
@@ -17,6 +18,16 @@ import vn.tmc.attendance.domain.Direction;
  * <p>Verified against PostgreSQL by PersistenceAndBrokerIT.
  */
 public class JdbcAttendanceTransactionRepository implements IAttendanceTransactionRepository {
+  private static final RowMapper<AttendanceTransaction> MAPPER =
+      (rs, n) ->
+          new AttendanceTransaction(
+              rs.getObject("attempt_id", UUID.class),
+              rs.getObject("employee_uuid", UUID.class),
+              rs.getString("factory_code"),
+              rs.getString("gate_id"),
+              Direction.valueOf(rs.getString("direction")),
+              rs.getTimestamp("occurred_at").toInstant(),
+              AttemptSource.valueOf(rs.getString("source")));
   private final JdbcTemplate jdbc;
 
   public JdbcAttendanceTransactionRepository(JdbcTemplate jdbc) {
@@ -44,20 +55,30 @@ public class JdbcAttendanceTransactionRepository implements IAttendanceTransacti
   public Optional<AttendanceTransaction> latestBefore(UUID employeeUuid, Instant at) {
     return jdbc
         .query(
-            "SELECT attempt_id, employee_uuid, factory_code, gate_id, direction, occurred_at, "
-                + "source FROM attendance_transactions WHERE employee_uuid = ? "
-                + "AND occurred_at < ? ORDER BY occurred_at DESC LIMIT 1",
-            (rs, n) ->
-                new AttendanceTransaction(
-                    rs.getObject("attempt_id", UUID.class),
-                    rs.getObject("employee_uuid", UUID.class),
-                    rs.getString("factory_code"),
-                    rs.getString("gate_id"),
-                    Direction.valueOf(rs.getString("direction")),
-                    rs.getTimestamp("occurred_at").toInstant(),
-                    AttemptSource.valueOf(rs.getString("source"))),
+            "SELECT t.attempt_id, t.employee_uuid, t.factory_code, t.gate_id, "
+                + "COALESCE(c.direction, t.direction) AS direction, "
+                + "COALESCE(c.occurred_at, t.occurred_at) AS occurred_at, t.source "
+                + "FROM attendance_transactions t LEFT JOIN LATERAL "
+                + "(SELECT direction, occurred_at FROM attendance_corrections "
+                + "WHERE original_attempt_id = t.attempt_id ORDER BY revision DESC LIMIT 1) c "
+                + "ON TRUE WHERE t.employee_uuid = ? "
+                + "AND COALESCE(c.occurred_at, t.occurred_at) < ? "
+                + "ORDER BY COALESCE(c.occurred_at, t.occurred_at) DESC, t.attempt_id DESC LIMIT 1",
+            MAPPER,
             employeeUuid,
             Timestamp.from(at))
+        .stream()
+        .findFirst();
+  }
+
+  @Override
+  public Optional<AttendanceTransaction> findByAttemptId(UUID attemptId) {
+    return jdbc
+        .query(
+            "SELECT attempt_id, employee_uuid, factory_code, gate_id, direction, occurred_at, "
+                + "source FROM attendance_transactions WHERE attempt_id = ?",
+            MAPPER,
+            attemptId)
         .stream()
         .findFirst();
   }

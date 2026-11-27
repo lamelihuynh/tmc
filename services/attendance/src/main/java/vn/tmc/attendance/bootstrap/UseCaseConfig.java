@@ -5,9 +5,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import vn.tmc.attendance.application.port.in.IAttendanceCommand;
+import vn.tmc.attendance.application.port.in.IAttendanceCorrection;
 import vn.tmc.attendance.application.port.in.IAttendanceQuery;
+import vn.tmc.attendance.application.port.in.IManualAttendanceVerification;
 import vn.tmc.attendance.application.port.in.IOfflineAttendanceIngest;
 import vn.tmc.attendance.application.port.out.IAttemptRepository;
+import vn.tmc.attendance.application.port.out.IAttendanceCorrectionRepository;
 import vn.tmc.attendance.application.port.out.IAttendanceTransactionRepository;
 import vn.tmc.attendance.application.port.out.IGateStatusQuery;
 import vn.tmc.attendance.application.port.out.IOutboxRepository;
@@ -15,11 +18,13 @@ import vn.tmc.attendance.application.port.out.ITransactionRunner;
 import vn.tmc.attendance.application.usecase.AttendanceCommandService;
 import vn.tmc.attendance.application.usecase.AttendanceEventFactory;
 import vn.tmc.attendance.application.usecase.AttendanceQueryService;
+import vn.tmc.attendance.application.usecase.CorrectAttendanceUseCase;
 import vn.tmc.attendance.application.usecase.IngestOfflineBatchUseCase;
 import vn.tmc.attendance.application.usecase.PublishOutboxUseCase;
 import vn.tmc.attendance.application.usecase.ReconcileUnknownUseCase;
 import vn.tmc.attendance.application.usecase.RecoverStaleAttemptsUseCase;
 import vn.tmc.attendance.application.usecase.RecoveryPolicy;
+import vn.tmc.attendance.application.usecase.VerifyManualAttendanceUseCase;
 import vn.tmc.platform.kernel.IClock;
 import vn.tmc.platform.messaging.EventPublisher;
 
@@ -58,6 +63,30 @@ public class UseCaseConfig {
       AttendanceEventFactory events,
       IClock clock) {
     return new AttendanceCommandService(attempts, transactions, outbox, tx, events, clock);
+  }
+
+  @Bean
+  IAttendanceCorrection attendanceCorrection(
+      IAttemptRepository attempts,
+      IAttendanceTransactionRepository transactions,
+      IAttendanceCorrectionRepository corrections,
+      IOutboxRepository outbox,
+      ITransactionRunner tx,
+      AttendanceEventFactory events,
+      IClock clock) {
+    return new CorrectAttendanceUseCase(
+        attempts, transactions, corrections, outbox, tx, events, clock);
+  }
+
+  @Bean
+  IManualAttendanceVerification manualAttendanceVerification(
+      IAttemptRepository attempts,
+      IAttendanceTransactionRepository transactions,
+      IOutboxRepository outbox,
+      ITransactionRunner tx,
+      AttendanceEventFactory events,
+      IClock clock) {
+    return new VerifyManualAttendanceUseCase(attempts, transactions, outbox, tx, events, clock);
   }
 
   @Bean

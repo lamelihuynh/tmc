@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -24,8 +25,29 @@ public class InMemoryAttemptRepository implements IAttemptRepository {
   }
 
   @Override
+  public Optional<AccessAttempt> findByIdForUpdate(UUID attemptId) {
+    // InMemoryStore holds the shared transaction lock for the entire unit of work.
+    return findById(attemptId);
+  }
+
+  @Override
   public void save(AccessAttempt attempt) {
-    rows.put(attempt.attemptId(), copy(attempt));
+    rows.compute(
+        attempt.attemptId(),
+        (id, current) -> {
+          if (current != null
+              && (current.version() > attempt.version()
+                  || (current.manualVerifiedAt() != null
+                      && (!Objects.equals(current.manualVerifiedBy(), attempt.manualVerifiedBy())
+                          || !Objects.equals(
+                              current.manualVerificationReason(),
+                              attempt.manualVerificationReason())
+                          || !Objects.equals(
+                              current.manualVerifiedAt(), attempt.manualVerifiedAt()))))) {
+            throw new IllegalStateException("attempt changed since it was loaded");
+          }
+          return copy(attempt);
+        });
   }
 
   @Override
@@ -55,6 +77,27 @@ public class InMemoryAttemptRepository implements IAttemptRepository {
         .toList();
   }
 
+  @Override
+  public List<AccessAttempt> findAnomalies(
+      String factoryCode, Instant from, Instant to, int limit) {
+    boolean hasFactory = factoryCode != null && !factoryCode.isBlank();
+    return rows.values().stream()
+        .filter(a -> a.anomaly() != null)
+        .filter(a -> !hasFactory || factoryCode.equals(a.factoryCode()))
+        .filter(a -> from == null || !a.scannedAt().isBefore(from))
+        .filter(a -> to == null || !a.scannedAt().isAfter(to))
+        .sorted(
+            Comparator.comparing(AccessAttempt::scannedAt).thenComparing(AccessAttempt::attemptId))
+        .limit(limit)
+        .map(InMemoryAttemptRepository::copy)
+        .toList();
+  }
+
+  @Override
+  public long countByStatus(AttemptStatus status) {
+    return rows.values().stream().filter(a -> a.status() == status).count();
+  }
+
   private static AccessAttempt copy(AccessAttempt a) {
     return AccessAttempt.restore(
         a.attemptId(),
@@ -69,6 +112,9 @@ public class InMemoryAttemptRepository implements IAttemptRepository {
         a.reasonCode(),
         a.anomaly(),
         a.updatedAt(),
-        a.version());
+        a.version(),
+        a.manualVerifiedBy(),
+        a.manualVerificationReason(),
+        a.manualVerifiedAt());
   }
 }

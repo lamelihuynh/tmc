@@ -2,6 +2,15 @@
 
 Tài liệu này trả lời câu hỏi "mã đang làm gì khác với ADR và báo cáo M1, và vì sao". **Báo cáo cuối phải khớp với mã, nên mọi chỗ khác biệt ở đây hoặc phải sửa mã, hoặc phải sửa ADR/báo cáo.** Mỗi mục có người nhận việc trong `docs/team/WORK-BREAKDOWN.md`.
 
+## Bổ sung B-06/B-07 (25/11/2026)
+
+- `CorrectAttendanceUseCase` và `POST /hr/v1/attendance/{attemptId}/corrections` thêm revision bất biến; bản gốc không bị sửa. `AttendanceCorrected` và `AuditRecorded` được ghi cùng transaction. Tra cứu last-direction áp revision mới nhất trước khi lọc và sắp xếp theo thời gian.
+- `VerifyManualAttendanceUseCase` và `POST /hr/v1/attempts/{attemptId}/verify-manual` chỉ tính công cho `MANUAL` đã `COMMITTED`, không bất thường, có nhân viên và chiều. Migration V3 lưu người/lý do/thời điểm xác minh. Trạng thái vẫn `COMMITTED`; phiên bản tăng một lần; không gọi lại thiết bị cổng.
+- Cả hai use case kiểm `HR_STAFF` và phạm vi nhà máy. API dùng `PrincipalResolver`; chỉ profile `local`/`inmem` cho phép dev headers. Subject từ danh tính đã xác thực là người thực hiện; không nhận actor do client tự khai.
+- Hai thao tác khóa hàng `access_attempts` trong transaction để tránh trùng công/revision. Adapter từ chối ghi đè bằng snapshot cũ hoặc thay đổi bằng chứng xác minh đã lưu, khiến transaction liên quan rollback.
+- Sự kiện audit của Attendance mang `actor` là UUID HR, `reason` là mã lý do và `operationId` là khóa thao tác. Hợp đồng này phục vụ consumer của Team D; B-06/B-07 không thay đổi mã consumer.
+- Các bằng chứng kiểm thử của phiên bản 16/11 bên dưới không bao gồm thay đổi này. Test mới nằm trong `CorrectAttendanceUseCaseTest`, `ManualAttendanceVerificationTest`, `HrAttendanceApiTest`, `HrAttendanceDevProfileTest`, `InMemoryAttemptRepositoryTest` và `PersistenceAndBrokerIT`. Cần chạy `:services:attendance:test` và `:services:attendance:integrationTest` để xác nhận toàn bộ tiêu chí; kiểm tra trên bộ nhớ không chứng minh rollback PostgreSQL.
+
 ## 1. Khác biệt có chủ đích so với ADR
 
 **Đã quyết định (16/11/2026):** điểm 1 đến 6 theo hướng **ADR khớp mã**; ADR-11, 12, 13 chuyển sang Accepted, mỗi ADR có mục

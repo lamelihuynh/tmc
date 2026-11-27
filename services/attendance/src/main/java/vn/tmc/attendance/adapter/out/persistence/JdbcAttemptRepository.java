@@ -2,6 +2,7 @@ package vn.tmc.attendance.adapter.out.persistence;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -24,7 +25,8 @@ import vn.tmc.platform.kernel.ReasonCode;
 public class JdbcAttemptRepository implements IAttemptRepository {
   private static final String COLUMNS =
       "attempt_id, employee_uuid, gate_id, factory_code, direction, jti, source, scanned_at, "
-          + "status, reason_code, anomaly, updated_at, version";
+          + "status, reason_code, anomaly, updated_at, version, manual_verified_by, "
+          + "manual_verification_reason, manual_verified_at";
 
   private static final RowMapper<AccessAttempt> MAPPER =
       (rs, n) ->
@@ -41,7 +43,12 @@ public class JdbcAttemptRepository implements IAttemptRepository {
               enumOrNull(ReasonCode.class, rs.getString("reason_code")),
               enumOrNull(Anomaly.class, rs.getString("anomaly")),
               rs.getTimestamp("updated_at").toInstant(),
-              rs.getLong("version"));
+              rs.getLong("version"),
+              rs.getObject("manual_verified_by", UUID.class),
+              rs.getString("manual_verification_reason"),
+              rs.getTimestamp("manual_verified_at") == null
+                  ? null
+                  : rs.getTimestamp("manual_verified_at").toInstant());
 
   private final JdbcTemplate jdbc;
 
@@ -59,27 +66,54 @@ public class JdbcAttemptRepository implements IAttemptRepository {
   }
 
   @Override
+  public Optional<AccessAttempt> findByIdForUpdate(UUID attemptId) {
+    return jdbc
+        .query(
+            "SELECT " + COLUMNS + " FROM access_attempts WHERE attempt_id = ? FOR UPDATE",
+            MAPPER,
+            attemptId)
+        .stream()
+        .findFirst();
+  }
+
+  @Override
   public void save(AccessAttempt a) {
-    jdbc.update(
-        "INSERT INTO access_attempts ("
-            + COLUMNS
-            + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
-            + "ON CONFLICT (attempt_id) DO UPDATE SET status = EXCLUDED.status, "
-            + "reason_code = EXCLUDED.reason_code, anomaly = EXCLUDED.anomaly, "
-            + "updated_at = EXCLUDED.updated_at, version = EXCLUDED.version",
-        a.attemptId(),
-        a.employeeUuid(),
-        a.gateId(),
-        a.factoryCode(),
-        nameOrNull(a.direction()),
-        a.jti(),
-        a.source().name(),
-        Timestamp.from(a.scannedAt()),
-        a.status().name(),
-        nameOrNull(a.reasonCode()),
-        nameOrNull(a.anomaly()),
-        Timestamp.from(a.updatedAt()),
-        a.version());
+    int stored =
+        jdbc.update(
+            "INSERT INTO access_attempts ("
+                + COLUMNS
+                + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                + "ON CONFLICT (attempt_id) DO UPDATE SET status = EXCLUDED.status, "
+                + "reason_code = EXCLUDED.reason_code, anomaly = EXCLUDED.anomaly, "
+                + "updated_at = EXCLUDED.updated_at, version = EXCLUDED.version, "
+                + "manual_verified_by = EXCLUDED.manual_verified_by, "
+                + "manual_verification_reason = EXCLUDED.manual_verification_reason, "
+                + "manual_verified_at = EXCLUDED.manual_verified_at "
+                + "WHERE access_attempts.version <= EXCLUDED.version "
+                + "AND (access_attempts.manual_verified_at IS NULL "
+                + "OR (access_attempts.manual_verified_by IS NOT DISTINCT FROM EXCLUDED.manual_verified_by "
+                + "AND access_attempts.manual_verification_reason IS NOT DISTINCT FROM EXCLUDED.manual_verification_reason "
+                + "AND access_attempts.manual_verified_at IS NOT DISTINCT FROM EXCLUDED.manual_verified_at))",
+            a.attemptId(),
+            a.employeeUuid(),
+            a.gateId(),
+            a.factoryCode(),
+            nameOrNull(a.direction()),
+            a.jti(),
+            a.source().name(),
+            Timestamp.from(a.scannedAt()),
+            a.status().name(),
+            nameOrNull(a.reasonCode()),
+            nameOrNull(a.anomaly()),
+            Timestamp.from(a.updatedAt()),
+            a.version(),
+            a.manualVerifiedBy(),
+            a.manualVerificationReason(),
+            a.manualVerifiedAt() == null ? null : Timestamp.from(a.manualVerifiedAt()));
+    if (stored == 0) {
+      // A stale gate/recovery snapshot must roll back its outbox as well, never erase HR evidence.
+      throw new IllegalStateException("attempt changed since it was loaded");
+    }
   }
 
   @Override
@@ -114,6 +148,39 @@ public class JdbcAttemptRepository implements IAttemptRepository {
         status.name(),
         Timestamp.from(cutoff),
         limit);
+  }
+
+  @Override
+  public List<AccessAttempt> findAnomalies(
+      String factoryCode, Instant from, Instant to, int limit) {
+    var sql =
+        new StringBuilder("SELECT ")
+            .append(COLUMNS)
+            .append(" FROM access_attempts WHERE anomaly IS NOT NULL");
+    var params = new ArrayList<>();
+    if (factoryCode != null && !factoryCode.isBlank()) {
+      sql.append(" AND factory_code = ?");
+      params.add(factoryCode);
+    }
+    if (from != null) {
+      sql.append(" AND scanned_at >= ?");
+      params.add(Timestamp.from(from));
+    }
+    if (to != null) {
+      sql.append(" AND scanned_at <= ?");
+      params.add(Timestamp.from(to));
+    }
+    sql.append(" ORDER BY scanned_at ASC, attempt_id ASC LIMIT ?");
+    params.add(limit);
+    return jdbc.query(sql.toString(), MAPPER, params.toArray());
+  }
+
+  @Override
+  public long countByStatus(AttemptStatus status) {
+    Long count =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM access_attempts WHERE status = ?", Long.class, status.name());
+    return count == null ? 0L : count;
   }
 
   private static String nameOrNull(Enum<?> value) {

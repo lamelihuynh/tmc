@@ -14,6 +14,12 @@ import vn.tmc.attendance.domain.AttemptStatus;
 public interface IAttemptRepository {
   Optional<AccessAttempt> findById(UUID attemptId);
 
+  /**
+   * Loads and exclusively locks the aggregate until the surrounding transaction ends. HR
+   * verification and correction use this to allocate one confirmation or revision at a time.
+   */
+  Optional<AccessAttempt> findByIdForUpdate(UUID attemptId);
+
   /** Insert or replace by attempt id. */
   void save(AccessAttempt attempt);
 
@@ -28,4 +34,13 @@ public interface IAttemptRepository {
 
   /** Attempts in {@code status} whose last change is strictly before {@code cutoff}. */
   List<AccessAttempt> findByStatusUpdatedBefore(AttemptStatus status, Instant cutoff, int limit);
+
+  /**
+   * Unresolved attempts flagged with an offline anomaly, oldest scan first, optionally filtered by
+   * factory and scan time range [from, to].
+   */
+  List<AccessAttempt> findAnomalies(String factoryCode, Instant from, Instant to, int limit);
+
+  /** Current number of attempts in {@code status}. */
+  long countByStatus(AttemptStatus status);
 }

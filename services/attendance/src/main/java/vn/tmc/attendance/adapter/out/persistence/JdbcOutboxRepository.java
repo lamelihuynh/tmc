@@ -2,6 +2,8 @@ package vn.tmc.attendance.adapter.out.persistence;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -55,6 +57,16 @@ public class JdbcOutboxRepository implements IOutboxRepository {
     jdbc.update(
         "UPDATE outbox_events SET failure_count = failure_count + 1 WHERE message_id = ?",
         messageId);
+  }
+
+  @Override
+  public long countPendingOlderThan(Instant cutoff) {
+    Long count =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM outbox_events WHERE publish_status = 'PENDING' AND created_at < ?",
+            Long.class,
+            Timestamp.from(cutoff));
+    return count == null ? 0L : count;
   }
 
   private String toJson(EventEnvelope envelope) {

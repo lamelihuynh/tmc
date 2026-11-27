@@ -14,12 +14,12 @@ Báo cáo nộp = **`docs/document.md` (M1) đã sửa + phần M2**, xuất th�
 
 | Tệp | Phần | Trả lời yêu cầu đề | Team | Căn cứ trong repo | Trạng thái |
 | --- | --- | --- | --- | --- | --- |
-| `01-issues-connectivity.md` | Issues Encountered: mất kết nối trong lúc xử lý | "Propose architectural enhancements ... explain how it mitigates ... how it should be incorporated" | B (viết), A, D | ADR-11, `state-machine.md`, `Adr11ResilienceTest`, `make demo-timeout`, `make demo-offline` | Chưa viết |
+| `01-issues-connectivity.md` | Issues Encountered: mất kết nối trong lúc xử lý | "Propose architectural enhancements ... explain how it mitigates ... how it should be incorporated" | B (viết), A, D | ADR-11, `state-machine.md`, `Adr11ResilienceTest`, `make demo-timeout`, `make demo-offline` | Hoàn thành (Team B) |
 | `02-issues-static-qr.md` | Issues Encountered: QR tĩnh bị lộ | như trên | C (viết), A, D | ADR-12, `Adr12TokenVerificationTest`, `make demo-online`, `privacy-notes.md` | Hoàn thành (Team C) |
-| `03-requirements-update.md` | Cập nhật FR-19, NFR-05, NFR-09, UC-07, UC-08, AC-03, AC-04 | Task 1.1 | C (NFR-05, UC-07), B (NFR-09, UC-08) | `docs/adr/README.md` mục 3 | Đã viết phần Team C |
-| `04-views-update.md` | Component, sequence, deployment đã sửa | Task 1.2 (module, C&C, allocation) | A (quét QR, 15.2), B (outbox), C (bảo mật), D (HR) | `c4-edge.md`, `module-map.md` | Đã viết phần Team C |
-| `05-solid.md` | Áp dụng SOLID | Task 1.3 | cả bốn | `solid-map.md` | Đã viết phần Team C |
-| `06-reflection.md` | Phản ánh | Task 1.4 | cả bốn (mỗi team một đoạn), D hợp nhất | | Đã viết phần Team C |
+| `03-requirements-update.md` | Cập nhật FR-19, NFR-05, NFR-09, UC-07, UC-08, AC-03, AC-04 | Task 1.1 | C (NFR-05, UC-07), B (NFR-09, UC-08) | `docs/adr/README.md` mục 3 | Đã viết phần Team B, C |
+| `04-views-update.md` | Component, sequence, deployment đã sửa | Task 1.2 (module, C&C, allocation) | A (quét QR, 15.2), B (outbox), C (bảo mật), D (HR) | `c4-edge.md`, `module-map.md` | Đã viết phần Team B, C |
+| `05-solid.md` | Áp dụng SOLID | Task 1.3 | cả bốn | `solid-map.md` | Đã viết phần Team B, C |
+| `06-reflection.md` | Phản ánh | Task 1.4 | cả bốn (mỗi team một đoạn), D hợp nhất | | Đã viết phần Team B, C |
 | `07-implementation.md` | Hiện thực module đã chọn, cách chạy, kết quả | Task 2 | D | `README.md`, `release-checklist.md` | Chưa viết |
 | `08-limitations.md` | Hạn chế và việc tiếp theo | trung thực | D | `implementation-notes.md` mục 3 đến 7 | Chưa viết |
 

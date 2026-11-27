@@ -11,6 +11,9 @@ import vn.tmc.attendance.domain.AttendanceCorrection;
  */
 public interface IAttendanceCorrectionRepository {
 
+  /** Globally unique idempotency key, including keys already used for a different pass. */
+  Optional<AttendanceCorrection> findById(UUID correctionId);
+
   /**
    * @return false when this (originalAttemptId, revision) already exists: a concurrent correction
    *     won, reload and retry with the next revision

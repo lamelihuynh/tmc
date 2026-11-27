@@ -10,6 +10,7 @@ dependencies {
     implementation(project(":platform:security"))
 
     implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-amqp")
@@ -18,6 +19,7 @@ dependencies {
     runtimeOnly("org.postgresql:postgresql")
 
     testImplementation(project(":platform:test-support"))
+    testImplementation(testFixtures(project(":platform:security")))
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation(libs.testcontainers.postgres)
     testImplementation(libs.testcontainers.rabbit)
