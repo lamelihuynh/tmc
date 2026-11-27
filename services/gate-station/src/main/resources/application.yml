@@ -16,8 +16,17 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+  rabbitmq:
+    host: ${RABBIT_HOST:localhost}
+    port: ${RABBIT_PORT:5672}
+    username: ${RABBIT_USER:tmc}
+    password: ${RABBIT_PASSWORD:tmc}
+    publisher-confirm-type: correlated
 
 tmc:
+  security:
+    jwks-url: ${IDENTITY_JWKS_URL:http://localhost:8087/.well-known/jwks.json}
+    allow-dev-headers: false
   gate:
     urls:
       attendance: ${ATTENDANCE_URL:http://localhost:8082}

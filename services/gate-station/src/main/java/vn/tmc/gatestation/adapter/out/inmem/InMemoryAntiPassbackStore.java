@@ -32,6 +32,14 @@ public class InMemoryAntiPassbackStore implements IAntiPassbackStore {
   }
 
   @Override
+  public synchronized void rememberIfNewer(UUID employeeUuid, LastPass pass) {
+    var current = last.get(employeeUuid);
+    if (current == null || pass.at().isAfter(current.at())) {
+      last.put(employeeUuid, pass);
+    }
+  }
+
+  @Override
   public synchronized boolean tryReserve(
       UUID employeeUuid, Direction direction, Instant scannedAt, Duration pendingTtl) {
     var now = clock.now();
@@ -48,7 +56,10 @@ public class InMemoryAntiPassbackStore implements IAntiPassbackStore {
   public synchronized void confirm(UUID employeeUuid) {
     var slot = pending.remove(employeeUuid);
     if (slot != null) {
-      last.put(employeeUuid, slot.pass());
+      var current = last.get(employeeUuid);
+      if (current == null || !slot.pass().at().isBefore(current.at())) {
+        last.put(employeeUuid, slot.pass());
+      }
     }
   }
 

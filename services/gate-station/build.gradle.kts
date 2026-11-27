@@ -11,6 +11,7 @@ dependencies {
     implementation(project(":platform:messaging"))
 
     implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-amqp")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
     // Gate Store (profile "gate-store", ADR-14). DataSource auto-configuration stays off: GateStoreConfig
@@ -21,6 +22,9 @@ dependencies {
     runtimeOnly("org.postgresql:postgresql")
 
     testImplementation(project(":platform:test-support"))
+    testImplementation(project(":simulators:turnstile-simulator"))
+    testImplementation(testFixtures(project(":platform:security")))
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation(libs.testcontainers.rabbit)
     testImplementation(libs.testcontainers.postgres)
 }

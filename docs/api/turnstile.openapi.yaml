@@ -18,7 +18,7 @@ paths:
       summary: Mở khóa đúng một lượt theo chiều chỉ định
       parameters:
         - { name: gateId, in: path, required: true, schema: { type: string }, description: "Mã cổng phần cứng, ví dụ BD-HW-01" }
-        - { name: Idempotency-Key, in: header, required: true, schema: { type: string }, description: "cmd-ts-<attempt_id>. Gửi lại cùng khóa thì cổng KHÔNG mở lần hai" }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1 }, description: "cmd-ts-<attempt_id>. Key được lưu riêng theo gateId; gửi lại cùng khóa thì cổng KHÔNG mở lần hai" }
         - { name: Authorization, in: header, required: true, schema: { type: string }, description: "Bearer token (kèm mTLS nội bộ)" }
         - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
       requestBody:
@@ -27,25 +27,27 @@ paths:
           application/json:
             schema:
               type: object
+              required: [direction, trigger_source, command_key]
               properties:
                 direction: { type: string, enum: [ENTRY, EXIT] }
                 trigger_source: { type: string, enum: [QR_SCAN, MANUAL_GUARD_OVERRIDE] }
                 operator_id: { type: string, format: uuid, nullable: true, description: "UUID bảo vệ khi MANUAL_GUARD_OVERRIDE" }
-                command_key: { type: string, description: "= attempt_id; để tra lại kết quả lệnh qua /status" }
+                command_key: { type: string, minLength: 1, description: "= attempt_id; để tra lại kết quả lệnh qua /status" }
       responses:
+        "400": { description: "Thiếu hoặc sai Idempotency-Key, direction, trigger_source, command_key hoặc operator_id khi mở thủ công" }
         "200":
           description: "`result=UNLOCKED` mới là đã mở. Bất kỳ giá trị khác coi là lỗi."
           content: { application/json: { schema: { $ref: "#/components/schemas/OpenResult" } } }
-        "409": { description: "Lỗi cơ khí (ví dụ MECHANICAL_ARM_JAMMED). Chưa mở. Ánh xạ: ERROR" }
-        "503": { description: "Bộ điều khiển ngoại tuyến. Chưa mở. Ánh xạ: ERROR" }
-        "504": { description: "Hết thời gian ở phía trên. KHÔNG biết đã mở hay chưa. Ánh xạ: TIMEOUT (UNKNOWN)" }
+        "409": { description: "Lỗi cơ khí (ví dụ MECHANICAL_ARM_JAMMED). Replay giữ nguyên 409. Chưa mở. Ánh xạ: ERROR" }
+        "503": { description: "Bộ điều khiển ngoại tuyến. Replay giữ nguyên 503. Chưa mở. Ánh xạ: ERROR" }
+        "504": { description: "Hết thời gian ở phía trên. Replay giữ nguyên 504. Adapter ánh xạ TIMEOUT; simulator ghi NOT_OPENED vào /status để đối soát" }
   /gates/{gateId}/close:
     post:
       summary: Đóng hoặc hủy lệnh mở (cảnh báo an ninh, bảo trì)
       parameters:
         - { name: gateId, in: path, required: true, schema: { type: string } }
       responses:
-        "200": { description: OK }
+        "200": { description: "Đã đóng; /status trả last_command_result=LOCKED" }
   /gates/{gateId}/status:
     get:
       summary: Trạng thái cổng và lệnh gần nhất (dùng để giải quyết TIMEOUT mà KHÔNG gửi lệnh mở mới)
@@ -61,7 +63,7 @@ paths:
                 properties:
                   state: { type: string, enum: [ONLINE, JAMMED, MAINTENANCE, OFFLINE] }
                   last_command_key: { type: string, nullable: true }
-                  last_command_result: { type: string, nullable: true, example: UNLOCKED }
+                  last_command_result: { type: string, nullable: true, enum: [UNLOCKED, NOT_OPENED, MECHANICAL_ARM_JAMMED, LOCKED], example: UNLOCKED }
                   pass_count: { type: integer }
   /admin/fault:
     post:
@@ -72,12 +74,14 @@ paths:
           application/json:
             schema:
               type: object
+              required: [mode]
               properties:
                 gateId: { type: string, example: BD-HW-01 }
                 mode: { type: string, enum: [NONE, JAM, OFFLINE, GATEWAY_TIMEOUT, DELAY_OPENED, DELAY_NOT_OPENED] }
-                delayMs: { type: integer, description: "Cho DELAY_*; đặt lớn hơn 800 để mất phản hồi" }
+                delayMs: { type: integer, minimum: 0, description: "Cho DELAY_*; đặt lớn hơn 800 để mất phản hồi" }
       responses:
         "200": { description: Đã bật }
+        "400": { description: "Thiếu mode hoặc delayMs âm" }
     delete:
       summary: "Chỉ turnstile-simulator: gỡ mọi lỗi"
       responses:

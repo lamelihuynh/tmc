@@ -46,21 +46,19 @@ Tài liệu này trả lời câu hỏi "mã đang làm gì khác với ADR và 
 | Hiệu chỉnh công (B-06) | Bản hiệu chỉnh là hàng mới trong `attendance_corrections`, không sửa hàng gốc; `aggregateVersion` = phiên bản gốc + `revision` | `AttendanceCorrection`, `AttendanceEventFactory.attendanceCorrected` |
 | Một nguồn cho dữ liệu dùng chung trong test | `docs/api/fixtures/employee-seed.json`, `qr-token-policy.json`; mỗi bên có test đọc tệp này | `EmployeeSeedContractTest` (3 service), `QrTokenPolicyContractTest` (user-qr, kiosk-simulator), `token.test.ts` |
 
-## 3. Khoảng trống: anti-passback sau khi nhập offline  (Team A: A-02, Team B: B-03)
+## 3. Anti-passback sau khi nhập offline (Team A: A-02, Team B: B-03; cập nhật 23/11/2026)
 
-`IngestOfflineBatchUseCase` ghi lượt vào Attendance và kiểm tra anti-passback **trong Attendance**, nhưng **không cập nhật `IAntiPassbackStore` của Gate Station**. Hệ quả: nhân viên vào offline rồi vào lại online ngay sau khi flush sẽ không bị chặn ở lượt thứ hai. Đây là lỗ hổng thật, không phải nhược điểm lý thuyết.
+Trước A-02, `IngestOfflineBatchUseCase` ghi lượt vào Attendance nhưng không cập nhật `IAntiPassbackStore` của Gate Station. A-02 hiện cập nhật `last` bằng `rememberIfNewer` sau khi Attendance chấp nhận bản ghi `OFFLINE_OPENED`; bản ghi offline cũ không ghi đè trạng thái mới hơn, còn bản ghi từ chối không tính là lượt qua cổng. Unit test và Redis integration test đều xanh; `RedisAdaptersIT` chạy đủ 9 test sau khi Docker Engine được bật.
 
-Hướng giải quyết đề xuất: sau khi `ingestOffline` trả `ACCEPTED`, Gate Station cập nhật `last` cho từng nhân viên theo `scannedAt` mới nhất của lô.
+## 4. Trạng thái lạnh và danh bạ nhân viên (Team A: A-03, Team C: C-02)
 
-## 4. Khoảng trống: trạng thái lạnh và danh bạ nhân viên  (Team A: A-03, Team C: C-02)
-
-- **Redis mất dữ liệu** thì `last` của anti-passback biến mất, nhân viên đã vào có thể vào lần nữa. Cần dựng lại từ `IAttendanceQuery.lastDirection` (B-05, A-03). Compose đã bật AOF để giảm khả năng này, không loại bỏ nó.
+- **A-03 đã xử lý trạng thái Redis mất khóa `last`:** `RecordScanUseCase` dựng lại từ Attendance qua `lastDirection`, ghi bằng `rememberIfNewer`, và lỗi dependency khiến request bị fail-secure (503 `DEPENDENCY_UNAVAILABLE`). Unit và HTTP test xác nhận lỗi dependency không mở cổng; kiểm tích hợp I-1 với Attendance thật chưa xác minh trong lượt rà soát này. AOF giảm khả năng mất dữ liệu nhưng không thay thế bước phục hồi.
 - **`IEmployeeDirectory`** của Gate Station nay được làm mới từ gói đồng bộ của User/QR. Nhưng User/QR vẫn lấy danh sách từ cấu hình (`tmc.qr.employees`); nguồn HR thật là C-02. Thay đổi trạng thái nhân viên đến cổng trễ tối đa một chu kỳ (30 giây).
 - Gói đồng bộ của kiosk **đã mang** danh bạ đủ điều kiện, nhưng kiosk-simulator **chưa dùng** nó khi offline: kiểm tra offline chỉ dựa vào khóa thiết bị, chữ ký, thời gian và replay. Nhân viên đã nghỉ việc nhưng thiết bị chưa bị thu hồi vẫn qua được khi kiosk offline, đến lúc đồng bộ sẽ bị gắn bất thường. M1 mục 10.4 đã thừa nhận giới hạn "không cam kết thu hồi tức thời trên thiết bị mất mạng"; phải nêu rõ trong báo cáo.
 
-## 5. Khoảng trống nhỏ  (Team A: A-06, Team B: B-04)
+## 5. Replay scan (Team A: A-06, Team B: B-04)
 
-- Khi trả lời một lượt **gửi lại**, `ScanResult.direction` là `null`. `AttemptView` **đã mang** `employeeUuid` và `direction` (commit `cdb7efb`), `IAttendanceGateway.lastDirection` đã có; việc còn lại là dùng chúng trong `RecordScanUseCase` (A-06, A-03).
+- **A-06 đã xử lý:** replay của `RecordScanUseCase` trả lại `AttemptState.direction`; test xác nhận lượt gửi lại giữ nguyên chiều và trường hợp dữ liệu cũ không có chiều vẫn trả `null`.
 - `ReasonCode.GATE_DIRECTION_MISMATCH` chưa có rule nào dùng; chỉ dùng trong test mở rộng chính sách.
 
 ## 6. Đã và chưa được kiểm chứng

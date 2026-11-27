@@ -1,5 +1,6 @@
 package vn.tmc.gatestation.adapter;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -12,8 +13,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import vn.tmc.gatestation.adapter.out.inmem.FakeAttendanceGateway;
 import vn.tmc.gatestation.adapter.out.inmem.ProgrammableQrValidation;
 import vn.tmc.gatestation.adapter.out.simulated.SimulatedTurnstileAdapter;
 import vn.tmc.gatestation.adapter.out.simulated.SimulatedTurnstileAdapter.Fault;
@@ -26,12 +29,14 @@ import vn.tmc.platform.kernel.ReasonCode;
 @SpringBootTest(classes = GateStationApplication.class)
 @AutoConfigureMockMvc
 @ActiveProfiles("inmem")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class KioskApiTest {
   private static final String E1 = "0192a1c0-0000-7000-8000-000000000001";
 
   @Autowired MockMvc mvc;
   @Autowired ProgrammableQrValidation qr;
   @Autowired SimulatedTurnstileAdapter turnstile;
+  @Autowired FakeAttendanceGateway attendance;
 
   private String body(String gate, String token) {
     return "{\"gate_id\":\"%s\",\"qr_token\":\"%s\",\"scanned_at\":\"%s\"}"
@@ -100,6 +105,27 @@ class KioskApiTest {
     } finally {
       turnstile.setFault(Fault.NONE);
     }
+  }
+
+  @Test
+  void should_return_503_when_attendance_cannot_rebuild_antipassback_state() throws Exception {
+    qr.accept(
+        "attendance-down",
+        UUID.fromString(E1),
+        "jti-attendance-down",
+        Instant.now().plusSeconds(30));
+    attendance.failLastDirection(true);
+
+    mvc.perform(
+            post("/kiosk/v1/scans")
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .header("X-Kiosk-Id", "K1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body("BD-GATE-01", "attendance-down")))
+        .andExpect(status().isServiceUnavailable())
+        .andExpect(jsonPath("$.error").value("DEPENDENCY_UNAVAILABLE"));
+
+    assertThat(turnstile.openCalls()).isZero();
   }
 
   @Test
@@ -189,7 +215,7 @@ class KioskApiTest {
             post("/security/v1/gates/BD-GATE-01/manual-open")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json))
-        .andExpect(status().isForbidden());
+        .andExpect(status().isUnauthorized());
   }
 
   @Test

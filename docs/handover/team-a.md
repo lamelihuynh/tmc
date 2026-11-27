@@ -172,6 +172,8 @@ Ngày 24/11: đóng băng mã lúc 23:00, chỉ sửa lỗi; cả hai tham gia t
 | Code theo | Stack `local` (`scripts/dev/local-stack.sh start`), `turnstile-simulator` không lỗi. Không cần stack Docker của team khác |
 | Xong khi | Bảng p50, p95, p99, tỷ lệ lỗi, cấu hình máy, lệnh chạy lại; nộp vào `docs/report/` trước 23:00 ngày 23/11. Ghi rõ điều kiện đo (máy cá nhân, cổng giả lập, profile nào). Đo trên stack Docker là kiểm tích hợp tùy chọn I-7 |
 
+Công cụ đo: scripts/perf/gate-station-a09.ps1; kết quả lần chạy hiện tại: docs/report/A-09-load-test.md.
+
 ### R-A. Phần báo cáo của Team A (A1; nháp 20/11, bản cuối 24/11)
 
 - Sơ đồ sequence của luồng quét QR, khớp với `RecordScanUseCase` hiện tại.

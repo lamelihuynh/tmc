@@ -23,6 +23,7 @@ public class FakeAttendanceGateway implements IAttendanceGateway {
   private final Map<UUID, LastPass> seededLastPass = new ConcurrentHashMap<>();
   private volatile boolean failRecordAttempt;
   private volatile boolean failRecordResult;
+  private volatile boolean failLastDirection;
 
   /** While true, recordAttempt throws as if Attendance were down. */
   public void failRecordAttempt(boolean fail) {
@@ -32,6 +33,11 @@ public class FakeAttendanceGateway implements IAttendanceGateway {
   /** While true, recordGateResult throws as if Attendance were down. */
   public void failRecordResult(boolean fail) {
     this.failRecordResult = fail;
+  }
+
+  /** While true, lastDirection throws as if Attendance were down. */
+  public void failLastDirection(boolean fail) {
+    this.failLastDirection = fail;
   }
 
   /** For tests: the stored state of an attempt. */
@@ -130,6 +136,9 @@ public class FakeAttendanceGateway implements IAttendanceGateway {
 
   @Override
   public Optional<LastPass> lastDirection(UUID employeeUuid, Instant before) {
+    if (failLastDirection) {
+      throw new IllegalStateException("attendance unavailable");
+    }
     var seeded = seededLastPass.get(employeeUuid);
     var counted =
         attempts.values().stream()

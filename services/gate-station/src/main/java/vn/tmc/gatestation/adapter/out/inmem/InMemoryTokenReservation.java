@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import vn.tmc.gatestation.application.port.out.ITokenReservation;
 import vn.tmc.platform.kernel.IClock;
 
@@ -13,7 +14,7 @@ import vn.tmc.platform.kernel.IClock;
  * between nodes.
  */
 public class InMemoryTokenReservation implements ITokenReservation {
-  private record Hold(boolean used, Instant until) {}
+  private record Hold(UUID attemptId, boolean used, Instant until) {}
 
   private final Map<String, Hold> holds = new HashMap<>();
   private final IClock clock;
@@ -23,26 +24,40 @@ public class InMemoryTokenReservation implements ITokenReservation {
   }
 
   @Override
-  public synchronized boolean reserve(String jti, Duration ttl) {
+  public synchronized Reservation reserve(String jti, UUID attemptId, Duration ttl) {
     var now = clock.now();
     var existing = holds.get(jti);
     if (existing != null && existing.until().isAfter(now)) {
-      return false;
+      return existing.attemptId().equals(attemptId)
+          ? Reservation.SAME_ATTEMPT
+          : Reservation.OTHER_ATTEMPT;
     }
-    holds.put(jti, new Hold(false, now.plus(ttl)));
-    return true;
+    holds.put(jti, new Hold(attemptId, false, now.plus(ttl)));
+    return Reservation.ACQUIRED;
   }
 
   @Override
-  public synchronized void release(String jti) {
+  public synchronized boolean ownedBy(String jti, UUID attemptId) {
+    var hold = holds.get(jti);
+    return hold != null && hold.until().isAfter(clock.now()) && hold.attemptId().equals(attemptId);
+  }
+
+  @Override
+  public synchronized void release(String jti, UUID attemptId) {
     var existing = holds.get(jti);
-    if (existing != null && !existing.used()) {
+    if (existing != null && existing.attemptId().equals(attemptId) && !existing.used()) {
       holds.remove(jti);
     }
   }
 
   @Override
-  public synchronized void markUsed(String jti, Instant blockUntil) {
-    holds.put(jti, new Hold(true, blockUntil));
+  public synchronized void markUsed(String jti, UUID attemptId, Instant blockUntil) {
+    var existing = holds.get(jti);
+    if (existing != null
+        && existing.until().isAfter(clock.now())
+        && !existing.attemptId().equals(attemptId)) {
+      throw new IllegalStateException("token is owned by another attempt");
+    }
+    holds.put(jti, new Hold(attemptId, true, blockUntil));
   }
 }
