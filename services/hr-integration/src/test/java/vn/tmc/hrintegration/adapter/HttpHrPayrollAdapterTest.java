@@ -44,6 +44,118 @@ class HttpHrPayrollAdapterTest {
     verifySubmissionAndLookup(submission, eventId, batchId);
   }
 
+  /** Starts a fake HR that answers every POST with {@code status} and records the path. */
+  private static HttpServer answering(int status, String body, AtomicReference<String> path)
+      throws Exception {
+    var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    server.createContext(
+        "/",
+        exchange -> {
+          try (exchange) {
+            path.set(exchange.getRequestURI().getPath());
+            exchange.getRequestBody().readAllBytes();
+            var bytes = body.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(status, bytes.length == 0 ? -1 : bytes.length);
+            if (bytes.length > 0) {
+              exchange.getResponseBody().write(bytes);
+            }
+          }
+        });
+    server.start();
+    return server;
+  }
+
+  private static Submission anySubmission() {
+    return new Submission(
+        UUID.randomUUID(), UUID.randomUUID(), "BD", "ENTRY", Instant.parse("2026-11-24T01:00:00Z"));
+  }
+
+  @Test
+  void should_map_each_http_status_to_what_it_says_about_the_batch() throws Exception {
+    var cases =
+        new Object[][] {
+          {200, SubmitResult.ACCEPTED},
+          {201, SubmitResult.ACCEPTED},
+          {202, SubmitResult.ACCEPTED},
+          {204, SubmitResult.ACCEPTED},
+          {207, SubmitResult.TIMEOUT},
+          {400, SubmitResult.REFUSED},
+          {401, SubmitResult.REFUSED},
+          {403, SubmitResult.REFUSED},
+          {422, SubmitResult.REJECTED},
+          {500, SubmitResult.TIMEOUT},
+          {503, SubmitResult.TIMEOUT},
+        };
+    for (var c : cases) {
+      var path = new AtomicReference<String>();
+      var server = answering((int) c[0], "{\"errors\":[\"x\"]}", path);
+      try {
+        var adapter =
+            new HttpHrPayrollAdapter(
+                URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
+                "t",
+                new ObjectMapper());
+        assertThat(adapter.submit(anySubmission())).as("HTTP %s", c[0]).isEqualTo(c[1]);
+      } finally {
+        server.stop(0);
+      }
+    }
+  }
+
+  @Test
+  void should_keep_the_path_of_the_base_url() throws Exception {
+    var path = new AtomicReference<String>();
+    var server = answering(200, "", path);
+    try {
+      var adapter =
+          new HttpHrPayrollAdapter(
+              URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/hr"),
+              "t",
+              new ObjectMapper());
+      adapter.submit(anySubmission());
+      assertThat(path.get()).isEqualTo("/hr/api/v1/attendance-batches");
+    } finally {
+      server.stop(0);
+    }
+  }
+
+  @Test
+  void should_name_the_corrected_line_in_a_correction() throws Exception {
+    var body = new AtomicReference<String>();
+    var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    server.createContext(
+        "/",
+        exchange -> {
+          try (exchange) {
+            body.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            exchange.sendResponseHeaders(200, -1);
+          }
+        });
+    server.start();
+    try {
+      var correctionId = UUID.randomUUID();
+      var original = UUID.randomUUID();
+      new HttpHrPayrollAdapter(
+              URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
+              "t",
+              new ObjectMapper())
+          .submit(
+              new Submission(
+                  correctionId,
+                  correctionId,
+                  UUID.randomUUID(),
+                  "BD",
+                  "EXIT",
+                  Instant.parse("2026-11-24T01:00:00Z"),
+                  original));
+      var json = new ObjectMapper().readTree(body.get());
+      assertThat(json.at("/records/0/event_id").asText()).isEqualTo(correctionId.toString());
+      assertThat(json.at("/records/0/corrects_event_id").asText()).isEqualTo(original.toString());
+    } finally {
+      server.stop(0);
+    }
+  }
+
   private void verifySubmissionAndLookup(
       Submission submission, UUID expectedEventId, UUID expectedBatchId) throws Exception {
     var json = new ObjectMapper();

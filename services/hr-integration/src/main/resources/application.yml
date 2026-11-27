@@ -9,6 +9,11 @@ spring:
     password: ${HR_DB_PASSWORD:hrintegration}
   flyway:
     enabled: true
+  task:
+    scheduling:
+      pool:
+        # reconcile job, payroll deadline alert and DLQ monitor must not wait on each other
+        size: 3
   rabbitmq:
     host: ${RABBIT_HOST:localhost}
     port: ${RABBIT_PORT:5672}
@@ -22,3 +27,9 @@ spring:
           enabled: true
           max-attempts: 3
           initial-interval: 500ms
+tmc:
+  hr:
+    # simulated: no real HR system (this project runs locally only). http: send to tmc.hr.url with
+    # HR_PAYROLL_API_TOKEN. Anything else stops the start-up.
+    mode: ${TMC_HR_MODE:simulated}
+    url: ${HR_PAYROLL_URL:}

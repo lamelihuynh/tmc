@@ -211,8 +211,10 @@ class SyncAttendanceEventTest {
 
     assertThat(hr.received()).hasSize(2);
     var sent = hr.received().get(1);
-    assertThat(sent.eventId()).isEqualTo(eventId);
+    // a correction is its own line at HR (event_id = correctionId) naming the line it corrects
+    assertThat(sent.eventId()).isEqualTo(correctionId);
     assertThat(sent.batchId()).isEqualTo(correctionId);
+    assertThat(sent.correctsEventId()).isEqualTo(eventId);
     assertThat(sent.direction()).isEqualTo("EXIT");
     assertThat(sent.scannedAt()).isEqualTo(correctedAt);
   }

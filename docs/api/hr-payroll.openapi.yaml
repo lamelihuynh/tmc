@@ -30,6 +30,10 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/AttendanceBatch" }
+      description: |
+        Cách TMC đọc mã trả về (HttpHrPayrollAdapter): 2xx trừ 207 là đã nhận (SYNCED); 422 là HR từ chối dữ liệu
+        (FAILED, không gửi lại); 4xx khác là HR chưa nhận vì lỗi phía TMC như sai token (RETRY_PENDING, gửi lại có
+        giãn cách và log ERROR); 207, 5xx, lỗi mạng là chưa rõ (UNKNOWN: tra cứu trạng thái lô trước khi gửi lại).
       responses:
         "200": { description: Tiếp nhận toàn bộ }
         "207": { description: "Một phần bản ghi lỗi. Chỉ gửi lại phần chưa được tiếp nhận" }
@@ -90,7 +94,15 @@ components:
           items:
             type: object
             properties:
-              event_id: { type: string, format: uuid, description: "= attempt_id, khóa chống trùng ở phía HR" }
+              event_id: { type: string, format: uuid, description: "Khóa chống trùng ở phía HR. Dòng gốc: = attempt_id. Dòng hiệu chỉnh: = correctionId (luôn bằng batch_id)" }
+              corrects_event_id:
+                type: string
+                format: uuid
+                nullable: true
+                description: |
+                  Chỉ có ở dòng hiệu chỉnh (AttendanceCorrected): attempt_id của dòng bị hiệu chỉnh. HR áp dòng hiệu
+                  chỉnh lên dòng nó chỉ tới **bất kể thứ tự đến**; nếu dòng gốc chưa tới thì dòng hiệu chỉnh đứng thay.
+                  Có từ 27/11 (rà soát D-06): trước đó bản hiệu chỉnh trùng event_id với dòng gốc nên HR có thể bỏ qua.
               employee_uuid: { type: string, format: uuid }
               direction: { type: string, enum: [ENTRY, EXIT] }
               occurred_at: { type: string, format: date-time }
