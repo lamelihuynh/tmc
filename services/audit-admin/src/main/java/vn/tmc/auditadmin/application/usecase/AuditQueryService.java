@@ -5,6 +5,7 @@ import java.util.List;
 import vn.tmc.auditadmin.application.port.in.IAuditQuery;
 import vn.tmc.auditadmin.application.port.out.IAuditStore;
 import vn.tmc.auditadmin.domain.AuditEntry;
+import vn.tmc.auditadmin.domain.AuditHashChain;
 import vn.tmc.platform.kernel.IClock;
 import vn.tmc.platform.security.Principal;
 import vn.tmc.platform.security.Rbac;
@@ -31,6 +32,18 @@ public class AuditQueryService implements IAuditQuery {
         "AUDIT_QUERIED",
         caller.subject().toString(),
         "filter:" + action + "/" + actor,
+        clock.now());
+    return result;
+  }
+
+  @Override
+  public AuditHashChain.Verification verifyChain(Principal caller) {
+    Rbac.requireRole(caller, Role.SYSTEM_ADMIN);
+    var result = store.verifyChain();
+    recorder.recordLocal(
+        "AUDIT_CHAIN_VERIFIED",
+        caller.subject().toString(),
+        result.valid() ? "valid:" + result.checked() : "broken-at:" + result.brokenAt(),
         clock.now());
     return result;
   }

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.lang.reflect.Modifier;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
@@ -15,6 +16,8 @@ import vn.tmc.auditadmin.adapter.out.inmem.InMemoryAuditStore;
 import vn.tmc.auditadmin.application.port.out.IAuditStore;
 import vn.tmc.auditadmin.application.usecase.AuditQueryService;
 import vn.tmc.auditadmin.application.usecase.RecordAuditUseCase;
+import vn.tmc.auditadmin.domain.AuditEntry;
+import vn.tmc.auditadmin.domain.AuditHashChain;
 import vn.tmc.platform.kernel.EventEnvelope;
 import vn.tmc.platform.kernel.IClock;
 import vn.tmc.platform.kernel.Ids;
@@ -122,9 +125,76 @@ class AuditTest {
         .isInstanceOf(AccessDeniedException.class);
   }
 
-  @Disabled("TODO Team D (AC-05): hash chain over entries so tampering is detectable")
   @Test
-  void should_detect_a_modified_entry_through_the_hash_chain() {}
+  void should_detect_a_modified_entry_through_the_hash_chain() {
+    record.handle(audit("LOGIN_FAILED"));
+    record.handle(audit("DEVICE_REVOKED"));
+    record.handle(audit("MANUAL_OPEN_REQUESTED"));
+    assertThat(store.verifyChain().valid()).isTrue();
+    assertThat(store.verifyChain().checked()).isEqualTo(3);
+
+    // what an attacker with write access to the storage could do: rewrite one stored entry
+    var links = new ArrayList<AuditHashChain.Link>();
+    AuditHashChain.Link previous = null;
+    long seq = 1;
+    for (var e : store.search(null, null, null, null, 10).reversed()) {
+      previous = AuditHashChain.next(previous, seq++, e);
+      links.add(previous);
+    }
+    assertThat(AuditHashChain.verify(links).valid()).isTrue();
+
+    var second = links.get(1);
+    var e = second.entry();
+    var forged =
+        new AuditEntry(
+            e.entryId(),
+            e.occurredAt(),
+            e.source(),
+            "LOGIN_SUCCEEDED",
+            e.actor(),
+            e.target(),
+            e.details());
+    links.set(1, new AuditHashChain.Link(second.seq(), forged, second.prevHash(), second.hash()));
+
+    var result = AuditHashChain.verify(links);
+    assertThat(result.valid()).isFalse();
+    assertThat(result.brokenAt()).isEqualTo(second.seq());
+
+    // recomputing the forged entry's own hash does not help: the next link no longer matches
+    links.set(1, AuditHashChain.next(links.get(0), second.seq(), forged));
+    assertThat(AuditHashChain.verify(links).brokenAt()).isEqualTo(links.get(2).seq());
+  }
+
+  @Test
+  void should_record_the_actor_sent_by_the_producer() {
+    var actor = UUID.randomUUID().toString();
+    record.handle(
+        new EventEnvelope(
+            Ids.uuidV7(),
+            "AuditRecorded",
+            1,
+            Ids.uuidV7(),
+            1,
+            Instant.now(),
+            "c",
+            "identity",
+            "BD",
+            "G",
+            Map.of("action", "LOGIN_LOCKED", "actor", actor)));
+
+    assertThat(query.search(admin, null, null, "LOGIN_LOCKED", actor)).hasSize(1);
+  }
+
+  @Test
+  void should_let_only_the_system_admin_verify_the_chain_and_audit_the_check() {
+    record.handle(audit("LOGIN_FAILED"));
+    var hr = new Principal(UUID.randomUUID(), Set.of(Role.HR_STAFF), DataScope.all());
+
+    assertThat(query.verifyChain(admin).valid()).isTrue();
+    assertThatThrownBy(() -> query.verifyChain(hr)).isInstanceOf(AccessDeniedException.class);
+    assertThat(store.search(null, null, "AUDIT_CHAIN_VERIFIED", null, 10)).hasSize(1);
+    assertThat(store.verifyChain().valid()).isTrue();
+  }
 
   @Disabled(
       "TODO Team D (NFR-02): search returns within 5 seconds and retention is at least 12 months")

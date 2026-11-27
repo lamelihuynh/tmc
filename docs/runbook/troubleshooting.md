@@ -37,6 +37,7 @@ Mỗi mục là một tình huống đã gặp khi dựng scaffold hoặc rất 
 | `Cannot connect to the Docker daemon` | Docker chưa bật | Bật Docker Desktop. `make integration` cần Docker, không thể bỏ qua |
 | Cổng 5432, 5433, 6379, 5672 đã dùng | Dịch vụ cục bộ khác | Tắt dịch vụ đó hoặc đổi cổng trong `docker/docker-compose.yml` **và** biến môi trường tương ứng |
 | `password authentication failed` | Dữ liệu cũ trong volume từ lần khởi tạo trước | `make nuke` rồi `make up` (xóa dữ liệu) |
+| audit-admin báo `password authentication failed for user "auditadmin_app"` | Volume PostgreSQL central tạo trước 27/11, chưa có login chỉ INSERT của D-08 (ADR-16) | Giữ dữ liệu: `docker exec -i tmc-postgres-central psql -U postgres -c "CREATE ROLE auditadmin_app LOGIN PASSWORD 'auditadmin_app'"`, rồi chạy lại audit-admin. Nếu bảng `audit_entries` đã được tạo trước khi có login, cấp quyền: `GRANT SELECT, INSERT ON audit_entries, processed_messages TO auditadmin_app; GRANT USAGE ON SEQUENCE audit_entries_seq_seq TO auditadmin_app;` trong database `audit_admin`. Hoặc xóa dữ liệu: `make nuke && make up` |
 | Flyway báo checksum không khớp | Đã sửa migration đã áp dụng | Không sửa migration cũ; thêm `V2__...`. Môi trường phát triển: `make nuke` |
 | Service không nhận được sự kiện | Hàng đợi chưa được khai báo hoặc chưa bind | Mở `http://localhost:15672` (tmc/tmc), kiểm tra queue `tmc.reporting.attendance` và binding `attendance.*` |
 | Thông điệp lặp lại | Phát ít nhất một lần là chủ đích | Consumer phải khử trùng; xem `IdempotentConsumer` |

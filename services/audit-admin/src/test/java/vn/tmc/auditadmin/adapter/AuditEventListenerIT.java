@@ -43,6 +43,8 @@ class AuditEventListenerIT {
     r.add("spring.datasource.url", POSTGRES::getJdbcUrl);
     r.add("spring.datasource.username", POSTGRES::getUsername);
     r.add("spring.datasource.password", POSTGRES::getPassword);
+    r.add("spring.flyway.user", POSTGRES::getUsername);
+    r.add("spring.flyway.password", POSTGRES::getPassword);
     r.add("spring.rabbitmq.host", RABBIT::getHost);
     r.add("spring.rabbitmq.port", RABBIT::getAmqpPort);
     r.add("spring.rabbitmq.username", RABBIT::getAdminUsername);

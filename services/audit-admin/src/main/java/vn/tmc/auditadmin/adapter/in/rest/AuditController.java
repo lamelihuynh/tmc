@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import vn.tmc.auditadmin.application.port.in.IAuditQuery;
 import vn.tmc.auditadmin.domain.AuditEntry;
+import vn.tmc.auditadmin.domain.AuditHashChain;
 import vn.tmc.platform.security.AccessDeniedException;
 import vn.tmc.platform.security.PrincipalHeaders;
 
@@ -45,6 +46,21 @@ public class AuditController {
       throw new AccessDeniedException("unauthenticated");
     }
     return query.search(caller, from, to, action, actor);
+  }
+
+  /** AC-05: is the stored log still intact? */
+  @GetMapping("/admin/v1/audit/verification")
+  public AuditHashChain.Verification verify(HttpServletRequest http) {
+    var caller =
+        PrincipalHeaders.parse(
+            http.getHeader("X-Subject"),
+            http.getHeader("X-Roles"),
+            http.getHeader("X-Scope-Factories"),
+            http.getHeader("X-Scope-Gates"));
+    if (caller == null) {
+      throw new AccessDeniedException("unauthenticated");
+    }
+    return query.verifyChain(caller);
   }
 
   @RestControllerAdvice

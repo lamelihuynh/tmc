@@ -3,10 +3,12 @@ package vn.tmc.auditadmin.application.port.out;
 import java.time.Instant;
 import java.util.List;
 import vn.tmc.auditadmin.domain.AuditEntry;
+import vn.tmc.auditadmin.domain.AuditHashChain;
 
 /**
  * Driven port: append-only audit storage (NFR-02, AC-05). There is deliberately no method that
- * changes or removes history; AuditTest fails if one is added.
+ * changes or removes history; AuditTest fails if one is added. Every appended entry is chained to
+ * the previous one by hash ({@link AuditHashChain}).
  */
 public interface IAuditStore {
   /** Adds an entry. An entry whose id is already stored is ignored (redelivered message). */
@@ -22,4 +24,7 @@ public interface IAuditStore {
   List<AuditEntry> search(Instant from, Instant to, String action, String actor, int limit);
 
   long count();
+
+  /** Recomputes the hash chain over every stored entry, in storage order. */
+  AuditHashChain.Verification verifyChain();
 }

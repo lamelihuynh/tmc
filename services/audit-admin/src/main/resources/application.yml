@@ -3,12 +3,16 @@ server:
 spring:
   application:
     name: audit-admin
+  # D-08: the service logs in as auditadmin_app (INSERT and SELECT only on audit_entries); Flyway
+  # logs in as the owner to create tables. Both logins come from docker/init/central.
   datasource:
     url: ${AUDIT_DB_URL:jdbc:postgresql://localhost:5433/audit_admin}
-    username: ${AUDIT_DB_USER:auditadmin}
-    password: ${AUDIT_DB_PASSWORD:auditadmin}
+    username: ${AUDIT_DB_USER:auditadmin_app}
+    password: ${AUDIT_DB_PASSWORD:auditadmin_app}
   flyway:
     enabled: true
+    user: ${AUDIT_DB_OWNER:auditadmin}
+    password: ${AUDIT_DB_OWNER_PASSWORD:auditadmin}
   rabbitmq:
     host: ${RABBIT_HOST:localhost}
     port: ${RABBIT_PORT:5672}

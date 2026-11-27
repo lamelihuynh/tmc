@@ -81,7 +81,7 @@ Biến môi trường đáng biết (đều có mặc định cho máy phát tri
 | `ATTENDANCE_DB_URL`, `_USER`, `_PASSWORD` | `jdbc:postgresql://localhost:5432/attendance_edge`, `attendance`, `attendance` | attendance |
 | `USERQR_DB_URL`, `_USER`, `_PASSWORD` | `jdbc:postgresql://localhost:5433/user_qr`, `userqr`, `userqr` | user-qr |
 | `RABBIT_HOST`, `RABBIT_PORT`, `RABBIT_USER`, `RABBIT_PASSWORD` | `localhost`, `5672`, `tmc`, `tmc` | attendance, user-qr, identity, reporting, hr-integration, audit-admin |
-| `REPORTING_DB_*`, `HR_DB_*`, `AUDIT_DB_*` | `jdbc:postgresql://localhost:5433/{reporting,hr_integration,audit_admin}`, login cùng tên trong `docker/init/central` | reporting, hr-integration, audit-admin |
+| `REPORTING_DB_*`, `HR_DB_*`, `AUDIT_DB_*` | `jdbc:postgresql://localhost:5433/{reporting,hr_integration,audit_admin}`, login cùng tên trong `docker/init/central`; riêng audit-admin chạy bằng `auditadmin_app` (chỉ INSERT, SELECT) và Flyway dùng `AUDIT_DB_OWNER`/`AUDIT_DB_OWNER_PASSWORD` (mặc định `auditadmin`), ADR-16 | reporting, hr-integration, audit-admin |
 | `GATE_STORE_DB_URL`, `_USER`, `_PASSWORD` | `jdbc:postgresql://localhost:5432/gate_store`, `gatestation`, `gatestation` | gate-station (profile `gate-store`) |
 | `IDENTITY_JWKS_URL`, `TMC_ALLOW_DEV_HEADERS` | `http://localhost:8087/.well-known/jwks.json`, `false` | user-qr |
 | `IDENTITY_JWT_PRIVATE_JWK` | trống (tự sinh khóa, chỉ dev) | identity |

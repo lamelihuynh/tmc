@@ -80,6 +80,22 @@ paths:
                     target: { type: string }
                     details: { type: object, additionalProperties: { type: string } }
         "403": { description: Không phải SYSTEM_ADMIN }
+  /admin/v1/audit/verification:
+    get:
+      summary: "Tính lại chuỗi băm của toàn bộ nhật ký audit (AC-05, ADR-16). Chỉ SYSTEM_ADMIN. Việc kiểm tra cũng bị ghi audit (AUDIT_CHAIN_VERIFIED)"
+      responses:
+        "200":
+          description: Kết quả kiểm tra
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [valid, checked]
+                properties:
+                  valid: { type: boolean, description: "true nếu mọi dòng khớp hash" }
+                  checked: { type: integer, format: int64, description: "Số dòng đã kiểm, tới dòng hỏng đầu tiên" }
+                  brokenAt: { type: integer, format: int64, nullable: true, description: "seq của dòng hỏng đầu tiên, null nếu nguyên vẹn" }
+        "403": { description: Không phải SYSTEM_ADMIN }
   /auth/v1/login:
     post:
       summary: "Đăng nhập, cấp JWT ES256 15 phút. Hợp đồng đầy đủ (claim, JWKS, lỗi) ở identity.openapi.yaml"

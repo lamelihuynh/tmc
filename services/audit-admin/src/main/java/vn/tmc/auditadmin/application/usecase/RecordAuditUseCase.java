@@ -9,9 +9,9 @@ import vn.tmc.platform.kernel.EventEnvelope;
 
 /**
  * Turns AuditRecorded events into stored entries. The entry id is the event's messageId, so a
- * redelivered message cannot create a second entry even without the consumer dedupe table. TODO
- * Team D: forward audit from User/QR, Gate Station and Identity through their own outboxes; hash
- * chain for tamper evidence (AC-05).
+ * redelivered message cannot create a second entry even without the consumer dedupe table. The
+ * actor is the payload's {@code actor} (AuditEvents), falling back to {@code employeeUuid} for
+ * older producers. The store chains every entry by hash (AC-05).
  */
 public class RecordAuditUseCase {
   private final IAuditStore store;
@@ -32,7 +32,7 @@ public class RecordAuditUseCase {
             event.occurredAt(),
             event.source(),
             details.getOrDefault("action", "UNKNOWN"),
-            details.get("employeeUuid"),
+            details.getOrDefault("actor", details.get("employeeUuid")),
             event.eventId().toString(),
             details));
   }

@@ -1,6 +1,6 @@
 # Chỉ mục quyết định kiến trúc (ADR)
 
-ADR-01 đến ADR-10 được **chấp thuận ở M1** và mô tả đầy đủ trong báo cáo `docs/document.md` mục 7 (bảng 7.1.1). Ở đây chỉ tóm tắt và chỉ ra chúng nằm ở đâu trong mã. ADR-11 đến ADR-15 là mới cho M2 và có tệp riêng trong thư mục này.
+ADR-01 đến ADR-10 được **chấp thuận ở M1** và mô tả đầy đủ trong báo cáo `docs/document.md` mục 7 (bảng 7.1.1). Ở đây chỉ tóm tắt và chỉ ra chúng nằm ở đâu trong mã. ADR-11 đến ADR-16 là mới cho M2 và có tệp riêng trong thư mục này.
 
 | ADR | Quyết định | Trạng thái | Nơi trong mã | Đã có test chứng minh |
 | --- | --- | --- | --- | --- |
@@ -19,8 +19,9 @@ ADR-01 đến ADR-10 được **chấp thuận ở M1** và mô tả đầy đ�
 | **13** | Gate Station điều phối luồng quét tại biên | **Accepted (M2, 16/11)** | `RecordScanUseCase`, `AccessPolicyChain`, `SyncEmployeeDirectoryUseCase` | `RecordScanUseCaseTest`, `AccessPolicyTest`, `EmployeeSyncTest` |
 | **14** | Gate Station có database riêng `gate_store` trên PostgreSQL của Edge (profile `gate-store`) | **Accepted (M2, 16/11)** | `GateStoreConfig`, `db/gate-store/V1__gate_store.sql`, `docker/init/edge/02-gate-store.sql` | `GateStoreIT` |
 | **15** | Exchange dùng chung `tmc.events` (khóa `<nguồn>.<EventType>`) và outbox dùng chung trong `platform/messaging` | **Accepted (M2, 16/11)** | `TmcExchange`, `OutboxStore`, `OutboxRelay`, `AmqpEnvelopePublisher`, `JdbcProcessedMessageStore`, `AuditOutbox` | `MessagingInfraIT`, `OutboxRelayTest`, IT của 3 consumer |
+| **16** | Nhật ký audit chỉ thêm, chuỗi băm, login chỉ INSERT | **Accepted (M2, 27/11)** | `AuditHashChain`, `JdbcAuditStore`, `db/migration/V2__audit_entries.sql` (audit-admin), `docker/init/central/01-databases.sql` | `AuditTest`, `AuditStoreIT` |
 
-Các tệp: [ADR-11](ADR-11-offline-first-store-and-forward.md), [ADR-12](ADR-12-dynamic-qr-device-binding.md), [ADR-13](ADR-13-edge-access-orchestrator.md), [ADR-14](ADR-14-gate-store-database.md), [ADR-15](ADR-15-shared-event-exchange-and-outbox.md). Tóm tắt thay đổi so với M1: [README.md](README.md).
+Các tệp: [ADR-11](ADR-11-offline-first-store-and-forward.md), [ADR-12](ADR-12-dynamic-qr-device-binding.md), [ADR-13](ADR-13-edge-access-orchestrator.md), [ADR-14](ADR-14-gate-store-database.md), [ADR-15](ADR-15-shared-event-exchange-and-outbox.md), [ADR-16](ADR-16-audit-hash-chain.md). Tóm tắt thay đổi so với M1: [README.md](README.md).
 
 ## Chỗ mã khác ADR
 
@@ -28,4 +29,4 @@ ADR-11, 12, 13 đã chuyển sang **Accepted** ngày 16/11/2026 theo hướng **
 
 ## ADR tiếp theo
 
-Số kế tiếp: **16**. Ứng viên đã thấy cần: chuỗi băm cho audit (D-08), cách xử lý lượt mở thủ công chờ xác minh (B-07), mô hình xác thực service-to-service (C-06).
+Số kế tiếp: **17**. Ứng viên đã thấy cần: cách xử lý lượt mở thủ công chờ xác minh (B-07), mô hình xác thực service-to-service (C-06).
