@@ -51,11 +51,22 @@ channels:
     subscribe:
       message: { $ref: "#/components/messages/AuditRecorded" }
   "user-qr.AuditRecorded":
-    description: "Audit của User/QR (đăng ký, thu hồi thiết bị...), C-08. Cùng envelope; source = user-qr"
+    description: |
+      Audit của User/QR, C-08. Cùng envelope; source = user-qr. Ghi trong cùng transaction với thay đổi thiết bị
+      (bảng `outbox_events` của database `user_qr`), nên có sự kiện thì có thay đổi và ngược lại.
+      `action`: `DEVICE_REGISTER`, `DEVICE_REVOKE` (nhân viên tự thu hồi), `DEVICE_REVOKE_BY_STAFF` (HR, quản trị).
+      `result`: `OK` hoặc `DENIED` (bị từ chối, không có thay đổi nào). `actor` = UUID người gọi;
+      `target` = `deviceId`, hoặc UUID nhân viên khi đăng ký bị từ chối.
     subscribe:
       message: { $ref: "#/components/messages/AuditRecorded" }
   "identity.AuditRecorded":
-    description: "Audit đăng nhập (thành công, sai, khóa), C-08. source = identity"
+    description: |
+      Audit đăng nhập, C-08. source = identity. Outbox trong database `identity` (C-11) ở profile mặc định.
+      `action` và `result`: `LOGIN_SUCCEEDED` (`OK`); `LOGIN_FAILED` (`BAD_PASSWORD`, `BAD_MFA_CODE`,
+      `UNKNOWN_ACCOUNT`, `ACCOUNT_INACTIVE`, `ACCOUNT_LOCKED`); `LOGIN_LOCKED` (`LOCKED`, lần sai làm khóa
+      tài khoản, phát ngay sau `LOGIN_FAILED` của lần đó); `LOGIN_MFA_REQUIRED` (`MFA_REQUIRED`).
+      `target` = UUID tài khoản (không có khi tên đăng nhập không tồn tại); `actor` chỉ có ở `LOGIN_SUCCEEDED`.
+      Không bao giờ có tên đăng nhập, mật khẩu, mã MFA hay token (ADR-09).
     subscribe:
       message: { $ref: "#/components/messages/AuditRecorded" }
   "gate-station.AuditRecorded":

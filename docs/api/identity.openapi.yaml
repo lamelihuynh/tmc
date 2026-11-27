@@ -38,6 +38,13 @@ info:
     **Khóa ký của identity**: `tmc.identity.jwt.private-jwk` (env `IDENTITY_JWT_PRIVATE_JWK`, JWK EC P-256 có `d`).
     Để trống thì identity tự sinh khóa khi khởi động (chỉ cho dev; `kid` đổi sau mỗi lần khởi động lại).
 
+    **Xoay khóa (C-12)**: `tmc.identity.jwt.previous-public-jwk` (env `IDENTITY_JWT_PREVIOUS_PUBLIC_JWK`) là JWK công khai
+    của khóa đang bị thay. Khóa này chỉ được công bố trong JWKS, không dùng để ký; JWKS trả khóa hiện tại trước, khóa
+    trước sau, hai `kid` khác nhau. Quy trình: (1) khởi động identity với khóa riêng mới và khóa công khai cũ;
+    (2) token cũ còn hạn vẫn được chấp nhận vì verifier chọn khóa theo `kid`; (3) sau 20 phút (15 phút sống của token
+    cộng 5 phút cache JWKS) bỏ khóa cũ, token còn sót của khóa cũ bị từ chối. Kiểm chứng: `SigningKeyRotationTest`,
+    `JwksRotationApiTest`.
+
     Nguồn mã: `services/identity/.../AuthController`, `JwksController`, `LoginUseCase`, `NimbusAccessTokenIssuer`;
     `platform/security/.../jwt/AccessTokenContract`, `AccessTokenSigner`, `JwtPrincipalVerifier`;
     fixtures `platform/security/src/testFixtures/.../jwt/TestJwtKeys`, `TestTokens`.

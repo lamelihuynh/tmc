@@ -1,34 +1,73 @@
-# Ghi chú bảo vệ dữ liệu cá nhân (ADR-09, NFR-04, Nghị định 13/2023/NĐ-CP)
+# Mô hình đe dọa và ghi chú bảo vệ dữ liệu cá nhân (C-10, ADR-08, ADR-09, ADR-12, NFR-04, Nghị định 13/2023/NĐ-CP)
 
-Tài liệu ngắn cho Team C và báo cáo. Phần "cần làm" là việc thật, không phải đã xong.
+Tài liệu này dành cho Team C và phần báo cáo M2 (`02-issues-static-qr.md`). Mọi khẳng định về biện pháp đã có trong mã đều trỏ tới lớp và bài kiểm thử thực tế trong repo; các hạng mục chưa hiện thực bằng mã được tách riêng ở mục 5.
 
-## Dữ liệu và nơi lưu
+## 1. Dữ liệu và nơi lưu
 
-| Dữ liệu | Có trong hệ thống? | Nơi | Cách bảo vệ hiện tại |
+| Dữ liệu | Có trong hệ thống? | Nơi lưu | Cách bảo vệ hiện tại |
 | --- | --- | --- | --- |
-| Họ tên, CCCD, số điện thoại | **Không** nằm trong token QR, sự kiện, journal kiosk, nhật ký | Hồ sơ nhân viên thuộc HR/Payroll (A-04 của M1) | Không đi vào các luồng của TMC |
-| Mã nhân viên nội bộ (UUID) | Có | Token (`sub`), sự kiện, bản ghi công | Chỉ là định danh gián tiếp, tham chiếu bằng UUID (DP-06) |
-| `device_id`, khóa công khai thiết bị | Có | `devices` (user-qr), cache kiosk | Là định danh gián tiếp; **không** đưa vào sự kiện. Mã hóa lưu trữ ở mức đĩa/CSDL |
-| Token QR thô | **Không lưu** | Chỉ trong bộ nhớ khi xử lý | Journal kiosk chỉ lưu SHA-256 |
-| Id token (`jti`) | Có | `access_attempts`, Redis | Không phải PII; **không** đưa vào sự kiện (`AttendanceEventFactory`) |
-| Thời điểm ra vào, nhà máy, cổng | Có | `attendance_transactions` | RBAC theo vai trò và phạm vi |
-| Sinh trắc học, vị trí GPS | **Không** thu thập | không | Ngoài phạm vi (M1 mục 1.4) |
+| Họ tên, CCCD, số điện thoại | **Không** nằm trong token QR, sự kiện, journal kiosk, nhật ký | Hồ sơ nhân viên thuộc hệ thống HR/Payroll (ngoài TMC) | Không đi vào các luồng xử lý của TMC |
+| Mã nhân viên nội bộ (`UUID`) | Có | Token (`sub`), sự kiện, bản ghi công | Chỉ là định danh gián tiếp, tham chiếu bằng UUID (DP-06) |
+| `device_id`, khóa công khai thiết bị | Có | Bảng `devices` (`user_qr`), cache kiosk qua `sync-bundle` | Định danh gián tiếp; **không** đưa vào sự kiện (`AuditRecorded` chỉ ghi `deviceId`, không ghi khóa công khai). Khóa riêng EC P-256 không xuất ra khỏi thiết bị |
+| Danh bạ đủ điều kiện (`employees`) | Có | Bảng `employees` (`user_qr`, `V3__employees.sql`, C-02) | Chỉ lưu `employee_uuid`, `status`, `factories`, `updated_at`; `EmployeeSeedLoader` bỏ qua `username` |
+| Thông tin xác thực nhân sự | Có | `identity` (bộ nhớ trên bản hiện tại, C-05) | Mật khẩu chỉ giữ dạng băm `PBKDF2WithHmacSHA256` kèm salt (`Pbkdf2PasswordVerifier`); bí mật TOTP chỉ nằm trong `TotpMfaVerifier` (khóa mẫu chỉ bật ở profile `local`, `inmem`), không xuất hiện trong JWT, log hay sự kiện |
+| Token QR thô | **Không lưu** | Chỉ trong bộ nhớ khi xác thực | Kiosk journal chỉ lưu SHA-256 của token; không ghi token thô ở mức `INFO` |
+| Id token (`jti`) | Có | `access_attempts` (`attendance`), Redis (`gate-station`), replay cache kiosk | Không phải PII; **không** đưa vào payload sự kiện chấm công (`AttendanceEventFactory`) |
+| Nhật ký kiểm toán (`outbox_events`) | Có | `outbox_events` (`user-qr`, `identity`, `attendance`, C-08, C-11) | Chỉ lưu UUID (`actor`, `target`) và mã hành động/kết quả (`action`, `result`); không chứa họ tên, tên đăng nhập, mật khẩu, mã TOTP hay khóa công khai |
+| Thời điểm ra vào, nhà máy, cổng | Có | `attendance_transactions` (`attendance`) | Kiểm soát truy cập bằng `Rbac` theo vai trò và phạm vi (`DataScope`) |
+| Sinh trắc học, vị trí GPS | **Không** thu thập | Không | Ngoài phạm vi hệ thống |
 
-## Biện pháp đã có trong mã
+## 2. Biện pháp bảo vệ riêng tư và an toàn đã có trong mã
 
-1. `NimbusTokenCodec` từ chối token chứa claim ngoài `sub, jti, iat, exp, fac, nonce`; test `Adr12TokenVerificationTest.should_reject_a_token_that_carries_a_pii_claim`.
-2. `AttendanceEventFactory` chỉ đưa UUID nội bộ vào payload; test kiểm không có `name`, `jti`, `token`.
-3. `RecordAuditUseCase` và `AuditEntry.details` chỉ chứa định danh.
-4. Khi từ chối, thông báo gửi về kiosk chỉ là `reason_code`, không có thông tin người.
-5. `DeviceManagementService` trả cùng một lỗi cho "không tồn tại" và "không phải của bạn".
+1. **Chặn PII trong QR token:** `NimbusTokenCodec` từ chối mọi token chứa claim ngoài tập `sub, jti, iat, exp, fac, nonce` với `MALFORMED_TOKEN`; kiểm chứng bởi `Adr12TokenVerificationTest.should_reject_a_token_that_carries_a_pii_claim` và `QrTokenPolicyContractTest`.
+2. **Sự kiện chấm công không rò rỉ dữ liệu nhạy cảm:** `AttendanceEventFactory` chỉ đưa UUID nội bộ vào payload, không đưa `name`, `jti` hay `token`; kiểm chứng bởi `Adr11ResilienceTest.should_not_leak_the_token_id_or_any_name_into_event_payloads`.
+3. **Danh bạ HR tối thiểu tại User/QR (C-02):** `EmployeeEligibilityService` và `JdbcEmployeeDirectory` chỉ lưu `employee_uuid`, `status`, `factories`, `updated_at`; khi HR chuyển trạng thái sang `INACTIVE`, hệ thống tự động thu hồi thiết bị `ACTIVE` của nhân viên và ghi audit trong cùng một transaction (`SyncBundleTest.should_publish_employee_eligibility_for_the_edge_and_revoke_device_on_deactivation`, `EmployeeEligibilityApiTest`, `EmployeeDirectoryIT`).
+4. **Audit qua outbox không chứa bí mật hay PII (C-08, C-11):** `OutboxAuditLog` của `user-qr` và `identity` chỉ phát `AuditRecorded` gồm định danh UUID và mã lý do; kiểm chứng bởi `DeviceAuditOutboxIT`, `DefaultProfileAuditIT`, `AuthenticationTest.should_emit_a_lock_event_after_five_wrong_passwords_without_any_secret`, `LoginAuditApiTest` và `IdentityOutboxIT`.
+5. **Không tiết lộ sự tồn tại tài khoản & ẩn thông tin lỗi sở hữu:** `AuthController` trả cùng cấu trúc từ chối không kèm `subject`/`roles`; `Pbkdf2PasswordVerifier` vẫn tính một lượt băm giả khi `username` không tồn tại (`AuthenticationTest.should_not_reveal_whether_the_account_exists`, `LoginApiTest`). `DeviceManagementService` trả cùng một lỗi `FORBIDDEN` cho thiết bị không tồn tại và thiết bị không thuộc về người gọi (`DeviceAndVerifyApiTest`).
+6. **Xác thực hai yếu tố TOTP cho vai trò đặc quyền (C-05):** `TotpMfaVerifier` áp dụng RFC 6238 (HMAC-SHA1, 6 chữ số, bước 30 giây, cửa sổ `±1` bước), so sánh hằng thời gian (`MessageDigest.isEqual`), chặn dùng lại mã ở cùng bước thời gian và fail-closed; kiểm chứng bởi `TotpMfaVerifierTest` và `TotpLoginApiTest`.
+7. **Kiosk chỉ trả `reason_code` khi từ chối:** thông báo từ chối về kiosk không mang họ tên hay thông tin cá nhân của nhân viên.
 
-## Việc cần làm (chưa xong)
+## 3. Mô hình đe dọa STRIDE (luồng QR và đăng nhập)
 
-| Việc | Story | Ghi chú |
+| Kịch bản đe dọa | STRIDE | Biện pháp giảm thiểu trong hệ thống | Rủi ro / giới hạn còn lại | Bằng chứng (Test thật / Chế độ kiểm thử app) |
+| --- | --- | --- | --- | --- |
+| **Chụp màn hình QR** | Spoofing, Tampering | Token mặc định sống 30s (`maxLifetime <= 60s`); giữ chỗ `jti` một lần dùng nguyên tử ở Edge (`ITokenReservation` / Redis `SET NX`, lớp R1); replay cache cục bộ tại kiosk khi mất mạng (lớp R2); phát hiện trùng `jti` giữa các kiosk khi đồng bộ lô (`TOKEN_REUSED_OFFLINE`, lớp R3). | Nếu Redis Edge mất sạch dữ liệu (dù đã bật AOF), chặn dùng lại online bị hở tối đa đến `exp + 60s`; nhân viên chưa tự quét thì ảnh chụp vẫn dùng được một lần trong cửa sổ sống ngắn. | `Adr12TokenVerificationTest.should_reject_a_token_expired_beyond_the_clock_skew`, `QrTokenPolicyContractTest`, `RecordScanUseCaseTest`, `RedisAdaptersIT`, `KioskAppTest.should_refuse_the_same_token_twice_offline_using_the_local_replay_cache`, `Adr11ResilienceTest`; chế độ **"Ảnh chụp màn hình"** (`docs/handover/02-chay-local.md` mục 5.3). |
+| **Chuyển tiếp ảnh QR (hoặc tạo QR sống lâu / chứa PII)** | Spoofing, Information Disclosure, Elevation of Privilege | Loại bỏ hoàn toàn QR tĩnh qua email (ADR-12); `TokenVerificationPolicy` từ chối mọi token có `exp - iat > 60s` (`MALFORMED_TOKEN`); `NimbusTokenCodec` từ chối token chứa claim ngoài 6 claim cho phép; anti-passback và `jti` chặn quét lặp. | Nếu chủ sở hữu cố tình chụp và gửi ảnh ngay trong 30s (khi mình chưa quét), chữ ký vẫn hợp lệ về mặt mật mã; cần kết hợp đối chiếu trực quan tại cổng và quy tắc gian lận liên nhà máy (R4). | `Adr12TokenVerificationTest.should_reject_a_long_lived_token_that_behaves_like_a_static_qr`, `Adr12TokenVerificationTest.should_reject_a_token_that_carries_a_pii_claim`, `QrTokenPolicyContractTest`, `apps/employee-app/src/lib/token.test.ts`; chế độ **"QR sống 24 giờ"** và **"QR chứa họ tên"** (`02-chay-local.md` mục 5.3). |
+| **Mất điện thoại** | Spoofing, Elevation of Privilege | Khóa riêng EC P-256 lưu không xuất ra được (`extractable = false` trong WebCrypto IndexedDB; Android Keystore/iOS Secure Enclave trên app gốc); nhân viên tự thu hồi, đăng ký máy mới tự thu hồi máy cũ, hoặc HR thu hồi / đặt `INACTIVE` (`PUT /hr/v1/employees/{employeeUuid}/eligibility`) tự thu hồi thiết bị `ACTIVE` → `VerifyQrTokenUseCase` trả `DEVICE_REVOKED`, phát tán qua `sync-bundle`. | Độ trễ đồng bộ từ `user-qr` xuống `gate-station` tối đa 30 giây (`EmployeeDirectorySyncJob`); kiosk đang mất mạng hoàn toàn chưa nhận `sync-bundle` mới vẫn dùng cache cũ cho đến khi kết nối lại. | `Adr12TokenVerificationTest.should_reject_tokens_of_a_revoked_device`, `Adr12TokenVerificationTest.should_revoke_the_previous_device_when_a_new_one_is_registered`, `Adr12TokenVerificationTest.should_let_hr_staff_revoke_but_not_a_plain_employee`, `DeviceAndVerifyApiTest`, `SyncBundleTest.should_publish_employee_eligibility_for_the_edge_and_revoke_device_on_deactivation`, `EmployeeEligibilityApiTest`, `EmployeeDirectoryIT`, `KioskAppTest.should_not_open_offline_for_a_device_revoked_in_the_last_sync`; nút **"Thu hồi thiết bị này"** (`02-chay-local.md` mục 5.3). |
+| **Giả mạo thiết bị / ký thay người khác / đăng ký tranh chấp** | Spoofing, Tampering, Elevation of Privilege | `VerifyQrTokenUseCase` kiểm tra `kid` tồn tại, `ACTIVE`, `device.employeeUuid == claims.sub` trước khi xác thực chữ ký ES256; chỉ chủ tài khoản (`caller.subject().equals(employeeUuid)`) có vai trò `EMPLOYEE` mới đăng ký được thiết bị cho chính mình; partial unique index `uq_one_active_device_per_employee` chặn đăng ký song song (1 bên thắng `201`, bên kia nhận `409 Conflict` và rollback sạch). | Trên web app thử nghiệm (`employee-app`), khóa nằm trong IndexedDB của trình duyệt thay vì phần cứng bảo mật chuyên dụng của điện thoại thật. | `Adr12TokenVerificationTest.should_reject_a_token_signed_by_a_different_key_with_the_same_kid`, `Adr12TokenVerificationTest.should_reject_a_device_that_vouches_for_another_employee`, `Adr12TokenVerificationTest.should_reject_an_unknown_device`, `Adr12TokenVerificationTest.should_not_let_an_employee_register_a_device_for_someone_else`, `DeviceRegistrationConflictTest`, `DeviceConflictApiTest`, `ConcurrentDeviceRegistrationIT`. |
+| **Lệch đồng hồ** | Tampering, Denial of Service | `TokenVerificationPolicy` dung sai tối đa `clockSkew = 60s`: từ chối `iat > now + 60s` (`CLOCK_SKEW_EXCEEDED`) và từ chối `now > exp + 60s` (`QR_EXPIRED`), vừa tránh từ chối oan do sai số đồng hồ điện thoại vừa giới hạn cửa sổ hiệu lực. | Dung sai 60s kéo dài thời gian sống thực tế của một token từ 30s lên tối đa 90s (được bù bằng TTL giữ chỗ `jti` kéo dài tới `exp + 60s`). Nếu đồng hồ điện thoại lệch quá 60s, nhân viên phải bật đồng bộ giờ tự động hoặc dùng đường lùi mở cổng thủ công có xác minh (UC-06). | `Adr12TokenVerificationTest.should_accept_a_token_that_expired_within_the_clock_skew`, `Adr12TokenVerificationTest.should_reject_a_token_expired_beyond_the_clock_skew`, `Adr12TokenVerificationTest.should_reject_a_token_issued_in_the_future_beyond_the_skew`, `QrTokenPolicyContractTest`. |
+| **Kiosk bị can thiệp** | Tampering, Repudiation, Information Disclosure | Kiosk chỉ nhận khóa công khai từ `sync-bundle`, không giữ khóa riêng để ký giả QR; journal SQLite chỉ lưu SHA-256 của token, không lưu token thô; khi gửi bù chỉ gửi `attempt_id` và hash; gửi trùng `jti` giữa nhiều kiosk bị gắn cờ `TOKEN_REUSED_OFFLINE` khi nhập lô. | Môi trường phát triển chưa bật mTLS/TLS 1.2+ (D-11); nếu kiosk bị chiếm quyền cục bộ khi LAN đứt, kẻ tấn công tại chỗ có thể ra lệnh trực tiếp cho turnstile ở làn đó (chỉ phát hiện được khi đối soát hoặc qua camera/bảo vệ). | `KioskAppTest.should_never_store_the_raw_token_in_the_journal`, `KioskAppTest.should_retry_an_unfinished_scan_with_the_hash_never_the_raw_token`, `simulators/kiosk-simulator/.../QrTokenPolicyContractTest`, `Adr11ResilienceTest`. |
+| **Token JWT bị lộ / tấn công tài khoản nhân sự** | Spoofing, Elevation of Privilege, Repudiation | JWT ký ES256 (`typ: JWT`, kiểm `kid` theo JWKS), sống 15 phút (`exp - iat = 900s`), kiểm `iss = tmc-identity`, `aud = tmc-services` và enum `Role`; ở profile mặc định tắt header dev (`allow-dev-headers = false`) và token Bearer sai không bao giờ rơi về header dev; hỗ trợ xoay khóa ký không gián đoạn (C-12); khóa tài khoản 15 phút sau 5 lần sai + bắt buộc TOTP RFC 6238 chống dùng lại cho `HR_STAFF`/`SYSTEM_ADMIN` (C-05); ghi audit đăng nhập qua outbox bền (C-08, C-11). | Chưa có danh sách thu hồi JWT trước khi hết hạn 15 phút và chưa hiện thực hết hạn phiên theo không hoạt động (`should_expire_an_idle_session`, `should_end_open_sessions_when_a_role_changes` còn `@Disabled`). Nếu khóa riêng JWT hoặc token còn hạn bị lộ, kẻ giữ token có quyền tương ứng tối đa 15 phút cho tới khi hết hạn hoặc xoay khóa. | `BearerTokenApiTest`, `JwtPrincipalVerifierTest`, `LoginApiTest`, `AuthenticationTest`, `TotpMfaVerifierTest`, `TotpLoginApiTest`, `SigningKeyRotationTest`, `JwksRotationApiTest`, `LoginAuditApiTest`, `IdentityOutboxIT`. |
+
+## 4. Chính sách lưu giữ và quyền của chủ thể dữ liệu (Nghị định 13/2023/NĐ-CP)
+
+### 4.1. Chính sách lưu giữ và xóa dữ liệu hết hạn (C-10)
+
+| Loại dữ liệu | Nơi lưu | Thời hạn lưu giữ đề xuất | Xử lý khi hết hạn / nhân viên nghỉ việc |
+| --- | --- | --- | --- |
+| Bản ghi khóa thiết bị (`devices`) đã `REVOKED` | `user_qr` | 90 ngày sau khi thu hồi (để phục vụ đối soát sự cố và đồng bộ delta) | Xóa cứng theo lịch dọn dẹp định kỳ; thiết bị `ACTIVE` tự động chuyển `REVOKED` ngay khi nhân viên bị đặt `INACTIVE` (C-02) |
+| Danh bạ đủ điều kiện (`employees`) | `user_qr` | Giữ trạng thái `INACTIVE` tối thiểu 90 ngày sau khi nghỉ việc để Edge/kiosk nhận delta thu hồi | Sau ngưỡng lưu đồng bộ (và khi đã hoàn tất kỳ công/lương), ẩn hoặc xóa bản ghi `INACTIVE` |
+| Bản ghi outbox đã phát (`publish_status = 'PUBLISHED'`) | `user_qr`, `identity`, `attendance`, `gate_store` | 7 đến 30 ngày | Xóa định kỳ các dòng `PUBLISHED` cũ; giữ lại bản ghi lỗi chưa phát để điều tra |
+| Lượt quét & giao dịch chấm công (`access_attempts`, `attendance_transactions`) | `attendance` | Theo quy định lưu trữ chứng từ công – lương của doanh nghiệp (tối thiểu 24 tháng; `kiosk` journal cục bộ chỉ giữ tạm cho tới khi đồng bộ xong) | Chỉ lưu `employee_uuid` gián tiếp; hết thời hạn pháp lý thì lưu trữ lạnh hoặc xóa theo chính sách công ty |
+| Nhật ký kiểm toán (`audit_entries`) | `audit_admin` | 12 tháng trở lên (chỉ thêm, gắn chuỗi băm kiểm toàn vẹn) | Lưu trữ chỉ đọc hoặc hủy an toàn khi hết thời hạn lưu trữ |
+
+> **Ghi chú trung thực:** Cơ chế dọn dẹp tự động theo lịch (retention purge job) chưa được viết thành mã trong đợt M2; hiện tại mới có logic giữ bản ghi `INACTIVE` thay vì xóa ngay để bảo đảm đồng bộ thu hồi xuống Edge (C-02).
+
+### 4.2. Quy trình thực hiện quyền của chủ thể dữ liệu
+
+| Quyền theo Nghị định 13/2023/NĐ-CP | Cách thực hiện trong kiến trúc TMC | Trạng thái trong mã M2 |
 | --- | --- | --- |
-| Mã hóa dữ liệu lưu (AES-256) | D-11 | Mức đĩa hoặc mã hóa cột; chọn và ghi vào báo cáo |
-| TLS 1.2+ giữa mọi thành phần và mTLS cho kiosk | D-11 | Hiện chạy HTTP thuần ở môi trường phát triển |
-| Chính sách lưu giữ và xóa dữ liệu hết hạn | C-10 | Job xóa, thời hạn do công ty quyết định |
-| Ghi log mọi truy cập PII | C-08, D-08 | Qua audit-admin |
-| Quyền của chủ thể dữ liệu (xem, sửa, xóa) | C-10 | Quy trình, không nhất thiết là mã |
-| Che mờ (masking) mã nhân viên khi hiển thị cho bảo vệ | C-03, D-10 | FR-09: bảo vệ chỉ xem thông tin tối thiểu |
+| **Quyền được biết & truy cập** | Nhân viên xem thông tin thiết bị của mình trên `employee-app`; truy vấn hồ sơ nhân sự thực hiện tại hệ thống HR/Payroll gốc (nơi duy nhất giữ họ tên, CCCD). | Có thông tin thiết bị trên app; chưa có màn hình tự xuất báo cáo dữ liệu cá nhân |
+| **Quyền chỉnh sửa** | Sửa thông tin nhân thân tại HR/Payroll; sửa quyền nhà máy/trạng thái qua `PUT /hr/v1/employees/{employeeUuid}/eligibility` (C-02); hiệu chỉnh công qua quy trình đối soát `HR_STAFF` (B-06, tạo bản ghi bổ sung có audit, không sửa đè lịch sử). | Đã có API cập nhật eligibility (C-02) và hiệu chỉnh công (B-06) |
+| **Quyền rút lại đồng ý / thu hồi phương tiện xác thực** | Nhân viên tự thu hồi khóa thiết bị bất kỳ lúc nào qua `DELETE /self-service/v1/devices/{deviceId}`, hoặc yêu cầu HR thu hồi / đặt `INACTIVE` (`POST /hr/v1/employees/{id}/devices/revoke`, `PUT /hr/v1/employees/{id}/eligibility`). | Đã có đầy đủ endpoint và test (`DeviceAndVerifyApiTest`, `EmployeeDirectoryIT`) |
+| **Quyền yêu cầu xóa dữ liệu** | Dữ liệu nhân thân nằm ngoài TMC được xóa/ẩn tại HR/Payroll; khi liên kết ánh xạ `employee_uuid ↔ hồ sơ nhân sự` bị xóa sau thời hạn lưu giữ pháp lý, mọi bản ghi lịch sử còn lại trong TMC chỉ còn là UUID vô danh không gắn được với cá nhân. Bản ghi công và nhật ký kiểm toán không cho xóa trực tiếp (`IAuditStore` chỉ thêm, có audit) nhằm tuân thủ nghĩa vụ kế toán/lao động và chống gian lận. | Nguyên tắc kiến trúc và bất biến `IAuditStore` đã có (`AuditTest`); quy trình vận hành do HR/Admin thực hiện |
+
+## 5. Việc còn lại ngoài phạm vi đã hiện thực
+
+| Việc | Liên quan | Ghi chú |
+| --- | --- | --- |
+| Mã hóa dữ liệu lưu (AES-256) | D-11 | Mức đĩa hoặc mã hóa cột ở môi trường triển khai thật; chưa cấu hình trong repo phát triển |
+| TLS 1.2+ giữa mọi thành phần và mTLS cho kiosk / nội bộ | D-11 | Hiện chạy HTTP thuần trên stack phát triển (`local` / `make up`) |
+| Job tự động dọn dữ liệu hết hạn | C-10 | Chính sách đã xác định ở mục 4.1, chưa có tác vụ nền tự động xóa trong M2 |
+| Che mờ (masking) mã nhân viên khi hiển thị cho bảo vệ | C-03, D-10 | FR-09: bảo vệ chỉ xem thông tin tối thiểu khi xử lý tại cổng |
+| Hết hạn phiên theo không hoạt động & thu hồi phiên khi đổi vai trò | NFR-03, FR-31 | Hai test `should_expire_an_idle_session` và `should_end_open_sessions_when_a_role_changes` trong `AuthenticationTest` đang `@Disabled` |
