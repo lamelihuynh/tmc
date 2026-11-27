@@ -12,16 +12,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
-/**
- * What the kiosk can check alone when the edge is unreachable (ADR-11 P6, ADR-12 R2): structure and
- * the PII guard, cached device key and revocation, signature, time rules, and the local replay
- * cache. It uses the SAME rules as the server so an offline decision rarely disagrees with the
- * online one.
- *
- * <p>Fail-secure (DP-04): no cached key, a revoked key or any doubt means DENY, never open.
- */
 public class OfflineVerifier {
-  /** Same list as user-qr QrClaims.ALLOWED_CLAIM_NAMES (docs/api/fixtures/qr-token-policy.json). */
   static final Set<String> ALLOWED = Set.of("sub", "jti", "iat", "exp", "fac", "nonce");
 
   public record Verdict(boolean valid, String reason, String employeeUuid, String jti) {
@@ -58,6 +49,7 @@ public class OfflineVerifier {
           || jwt.getHeader().getKeyID() == null) {
         return Verdict.denied("MALFORMED_TOKEN");
       }
+
       var set = jwt.getJWTClaimsSet();
       var extra = new HashSet<>(set.getClaims().keySet());
       extra.removeAll(ALLOWED);
@@ -68,9 +60,10 @@ public class OfflineVerifier {
           || set.getExpirationTime() == null) {
         return Verdict.denied("MALFORMED_TOKEN");
       }
+
       var key = journal.deviceKey(jwt.getHeader().getKeyID()).orElse(null);
       if (key == null) {
-        return Verdict.denied("DEVICE_UNKNOWN"); // nothing synced yet: do not open (ADR-11 2.3)
+        return Verdict.denied("DEVICE_UNKNOWN");
       }
       if (key.revoked()) {
         return Verdict.denied("DEVICE_REVOKED");
@@ -78,6 +71,7 @@ public class OfflineVerifier {
       if (!key.employeeUuid().equals(UUID.fromString(set.getSubject()).toString())) {
         return Verdict.denied("INVALID_SIGNATURE");
       }
+
       var pub =
           (ECPublicKey)
               KeyFactory.getInstance("EC")
@@ -87,6 +81,7 @@ public class OfflineVerifier {
       if (!jwt.verify(new ECDSAVerifier(pub))) {
         return Verdict.denied("INVALID_SIGNATURE");
       }
+
       var iat = set.getIssueTime().toInstant();
       var exp = set.getExpirationTime().toInstant();
       if (!exp.isAfter(iat) || Duration.between(iat, exp).compareTo(maxLifetime) > 0) {
@@ -99,11 +94,38 @@ public class OfflineVerifier {
         return Verdict.denied("QR_EXPIRED");
       }
       if (journal.jtiSeenSince(set.getJWTID(), now.minus(replayWindow))) {
-        return Verdict.denied("QR_ALREADY_USED"); // ADR-12 R2
+        return Verdict.denied("QR_ALREADY_USED");
       }
+
       return new Verdict(true, null, key.employeeUuid(), set.getJWTID());
     } catch (Exception e) {
       return Verdict.denied("MALFORMED_TOKEN");
     }
+  }
+
+  public Verdict verifyAtGate(String token, Instant now, String gateId) {
+    var verdict = verify(token, now);
+    if (!verdict.valid()) {
+      return verdict;
+    }
+
+    if (journal.gate(gateId).isEmpty()) {
+      return Verdict.denied("GATE_NOT_FOUND");
+    }
+    if (!journal.hasEmployeeDirectory()) {
+      return verdict;
+    }
+
+    var employee = journal.employee(UUID.fromString(verdict.employeeUuid())).orElse(null);
+    if (employee == null || !"ACTIVE".equals(employee.status())) {
+      return Verdict.denied("EMPLOYEE_INACTIVE");
+    }
+
+    int separator = gateId.indexOf('-');
+    if (separator <= 0 || !employee.factories().contains(gateId.substring(0, separator))) {
+      return Verdict.denied("FACTORY_NOT_PERMITTED");
+    }
+
+    return verdict;
   }
 }

@@ -157,7 +157,7 @@ public class KioskApp {
   }
 
   private Result decideOffline(UUID attemptId, String token, String gateId, Instant now) {
-    var verdict = verifier.verify(token, now);
+    var verdict = verifier.verifyAtGate(token, now, gateId);
     if (!verdict.valid()) {
       journal.update(attemptId, "OFFLINE_DENIED", null, null, null, false, verdict.reason());
       return new Result(attemptId, "DENIED", verdict.reason(), null, true);
@@ -197,6 +197,7 @@ public class KioskApp {
     var bundle = edge.sync(since);
     bundle.gates().forEach(journal::saveGate);
     bundle.deviceKeys().forEach(journal::saveDeviceKey);
+    journal.saveEmployees(bundle.employees());
     journal.setMeta("last_sync", clock.now().toString());
   }
 

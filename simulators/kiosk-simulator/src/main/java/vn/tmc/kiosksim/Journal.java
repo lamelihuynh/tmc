@@ -52,6 +52,13 @@ public class Journal implements AutoCloseable {
                 + " public_key TEXT NOT NULL, revoked INTEGER NOT NULL)");
         st.execute(
             "CREATE TABLE IF NOT EXISTS gates (gate_id TEXT PRIMARY KEY, mode TEXT NOT NULL)");
+        st.execute(
+            "CREATE TABLE IF NOT EXISTS employees ("
+                + "employee_uuid TEXT PRIMARY KEY, status TEXT NOT NULL)");
+        st.execute(
+            "CREATE TABLE IF NOT EXISTS employee_factories ("
+                + "employee_uuid TEXT NOT NULL, factory_code TEXT NOT NULL,"
+                + " PRIMARY KEY (employee_uuid, factory_code))");
         st.execute("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)");
       }
     } catch (SQLException e) {
@@ -249,6 +256,90 @@ public class Journal implements AutoCloseable {
       }
     } catch (SQLException e) {
       throw new IllegalStateException(e);
+    }
+  }
+
+  public synchronized void saveEmployees(List<EdgeClient.Employee> employees) {
+    if (employees == null) {
+      return;
+    }
+
+    try (var tx = db.createStatement()) {
+      tx.execute("BEGIN");
+      try {
+        try (var upsert =
+                db.prepareStatement(
+                    "INSERT INTO employees (employee_uuid, status) VALUES (?, ?)"
+                        + " ON CONFLICT(employee_uuid) DO UPDATE SET status = excluded.status");
+            var clear =
+                db.prepareStatement("DELETE FROM employee_factories WHERE employee_uuid = ?");
+            var allow =
+                db.prepareStatement(
+                    "INSERT INTO employee_factories (employee_uuid, factory_code) VALUES (?, ?)"
+                        + " ON CONFLICT(employee_uuid, factory_code) DO NOTHING")) {
+          for (var employee : employees) {
+            var id = employee.employeeUuid().toString();
+
+            upsert.setString(1, id);
+            upsert.setString(2, employee.status());
+            upsert.executeUpdate();
+
+            clear.setString(1, id);
+            clear.executeUpdate();
+
+            for (var factory : employee.factories()) {
+              allow.setString(1, id);
+              allow.setString(2, factory);
+              allow.executeUpdate();
+            }
+          }
+        }
+
+        setMeta("employee_directory_synced", "true");
+        tx.execute("COMMIT");
+      } catch (SQLException | RuntimeException error) {
+        try {
+          tx.execute("ROLLBACK");
+        } catch (SQLException rollbackError) {
+          error.addSuppressed(rollbackError);
+        }
+        throw error;
+      }
+    } catch (SQLException e) {
+      throw new IllegalStateException("cannot save employee directory", e);
+    }
+  }
+
+  public synchronized boolean hasEmployeeDirectory() {
+    return meta("employee_directory_synced").isPresent();
+  }
+
+  public synchronized Optional<EdgeClient.Employee> employee(UUID employeeUuid) {
+    var sql =
+        "SELECT e.status, f.factory_code FROM employees e"
+            + " LEFT JOIN employee_factories f ON f.employee_uuid = e.employee_uuid"
+            + " WHERE e.employee_uuid = ? ORDER BY f.factory_code";
+
+    try (var ps = db.prepareStatement(sql)) {
+      ps.setString(1, employeeUuid.toString());
+      try (var rs = ps.executeQuery()) {
+        if (!rs.next()) {
+          return Optional.empty();
+        }
+
+        var status = rs.getString("status");
+        var factories = new ArrayList<String>();
+        do {
+          var factory = rs.getString("factory_code");
+          if (factory != null) {
+            factories.add(factory);
+          }
+        } while (rs.next());
+
+        return Optional.of(new EdgeClient.Employee(employeeUuid, status, List.copyOf(factories)));
+      }
+    } catch (SQLException e) {
+      throw new IllegalStateException("cannot read employee directory", e);
     }
   }
 
