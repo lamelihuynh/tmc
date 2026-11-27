@@ -4,17 +4,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
+import java.time.YearMonth;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import vn.tmc.hrintegration.adapter.out.inmem.InMemorySyncLogRepository;
 import vn.tmc.hrintegration.adapter.out.inmem.SimulatedHrPayrollAdapter;
 import vn.tmc.hrintegration.application.port.out.IHrPayrollPort.LookupResult;
 import vn.tmc.hrintegration.application.port.out.IHrPayrollPort.SubmitResult;
+import vn.tmc.hrintegration.application.usecase.PayrollDeadlineCheck;
 import vn.tmc.hrintegration.application.usecase.SyncAttendanceEventUseCase;
 import vn.tmc.hrintegration.application.usecase.SyncMonitoringService;
+import vn.tmc.hrintegration.domain.SyncRecord;
 import vn.tmc.hrintegration.domain.SyncStatus;
 import vn.tmc.platform.kernel.EventEnvelope;
 import vn.tmc.platform.kernel.IClock;
@@ -218,40 +222,33 @@ class SyncAttendanceEventTest {
   @Test
   void should_send_a_correction_batch_for_missing_or_failed_records() {}
 
-  @Disabled(
-      "TODO Team D (NFR-08, AC-07): alert when records are still unconfirmed at 08:00 on the 1st")
   @Test
   void should_raise_a_deadline_alert_before_noon_on_the_first_day_of_the_month() {
-    var now =
-        new java.util.concurrent.atomic.AtomicReference<>(Instant.parse("2026-11-01T00:59:00Z"));
-    var check = new vn.tmc.hrintegration.application.usecase.PayrollDeadlineCheck(log, now::get);
+    var now = new AtomicReference<>(Instant.parse("2026-11-01T00:59:00Z"));
+    var check = new PayrollDeadlineCheck(log, now::get);
 
-    var october = java.time.YearMonth.of(2026, 10);
+    var october = YearMonth.of(2026, 10);
     var november = october.plusMonths(1);
     var octoberId = Ids.uuidV7();
     var novemberId = Ids.uuidV7();
 
     var outstanding =
-        new vn.tmc.hrintegration.domain.SyncRecord(
-            octoberId, SyncStatus.UNKNOWN, 1, null, now.get(), 1, octoberId, october);
+        new SyncRecord(octoberId, SyncStatus.UNKNOWN, 1, null, now.get(), 1, octoberId, october);
     log.save(outstanding);
     log.save(
-        new vn.tmc.hrintegration.domain.SyncRecord(
-            novemberId, SyncStatus.FAILED, 1, null, now.get(), 1, novemberId, november));
+        new SyncRecord(novemberId, SyncStatus.FAILED, 1, null, now.get(), 1, novemberId, november));
 
     assertThat(check.check()).isEmpty();
 
     now.set(Instant.parse("2026-11-01T01:00:00Z"));
     var morning = check.check().orElseThrow();
-    assertThat(morning.level())
-        .isEqualTo(vn.tmc.hrintegration.application.usecase.PayrollDeadlineCheck.Level.WARNING);
+    assertThat(morning.level()).isEqualTo(PayrollDeadlineCheck.Level.WARNING);
     assertThat(morning.period()).isEqualTo(october);
     assertThat(morning.outstanding()).isEqualTo(1);
 
     now.set(Instant.parse("2026-11-01T05:00:00Z"));
     var noon = check.check().orElseThrow();
-    assertThat(noon.level())
-        .isEqualTo(vn.tmc.hrintegration.application.usecase.PayrollDeadlineCheck.Level.OVERDUE);
+    assertThat(noon.level()).isEqualTo(PayrollDeadlineCheck.Level.OVERDUE);
     assertThat(noon.outstanding()).isEqualTo(1);
 
     log.save(outstanding.with(SyncStatus.SYNCED, null, now.get()));
