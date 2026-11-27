@@ -28,6 +28,10 @@ spring:
           max-attempts: 3
           initial-interval: 500ms
 tmc:
+  security:
+    # D-13: identity's JWKS; dev headers off unless a dev profile turns them on
+    jwks-url: ${IDENTITY_JWKS_URL:http://localhost:8087/.well-known/jwks.json}
+    allow-dev-headers: ${TMC_ALLOW_DEV_HEADERS:false}
   hr:
     # simulated: no real HR system (this project runs locally only). http: send to tmc.hr.url with
     # HR_PAYROLL_API_TOKEN. Anything else stops the start-up.

@@ -4,13 +4,22 @@ info:
   version: 0.1.0
   description: |
     Các endpoint đã có trong mã. Danh tính: `Authorization: Bearer <JWT>` do identity cấp (hợp đồng ở
-    `identity.openapi.yaml`); header dev (`X-Subject`, `X-Roles`, `X-Scope-Factories`) chỉ còn dùng ở profile dev.
+    `identity.openapi.yaml`); header dev (`X-Subject`, `X-Roles`, `X-Scope-Factories`) chỉ được nhận ở profile
+    `local` và `inmem` (D-13).
+
+    **Mã lỗi danh tính của ba service trung tâm (reporting, hr-integration, audit-admin):** thiếu token, token hết
+    hạn, sai chữ ký, hoặc header dev ở profile không cho phép trả **401** `{"error":"UNAUTHENTICATED"}` kèm
+    `WWW-Authenticate: Bearer`; token hợp lệ nhưng sai vai trò hoặc ngoài phạm vi trả **403**. Khác với
+    `identity.openapi.yaml` (ghi 403 cho cả hai) và với user-qr, attendance hiện vẫn trả 403: portal cần 401 để
+    biết phải đăng nhập lại.
     Phần còn lại của UC-09, UC-10, UC-11, UC-12 sẽ được thêm cùng với mã (story D-04 đến D-08, C-04 đến C-07).
 servers:
   - { url: "http://localhost:8084", description: reporting }
   - { url: "http://localhost:8085", description: hr-integration }
   - { url: "http://localhost:8086", description: audit-admin }
   - { url: "http://localhost:8087", description: identity }
+security:
+  - bearerAuth: []
 paths:
   /supervision/v1/presence:
     get:
@@ -32,6 +41,7 @@ paths:
                     direction: { type: string }
                     at: { type: string, format: date-time }
                     aggregateVersion: { type: integer, format: int64 }
+        "401": { description: Chưa đăng nhập hoặc token không hợp lệ }
         "403": { description: Sai vai trò hoặc ngoài phạm vi nhà máy }
   /supervision/v1/alerts:
     get:
@@ -55,6 +65,7 @@ paths:
                     rule: { type: string, example: IMPOSSIBLE_TRAVEL }
                     detail: { type: string }
                     at: { type: string, format: date-time }
+        "401": { description: Chưa đăng nhập hoặc token không hợp lệ }
         "403": { description: Sai vai trò hoặc ngoài phạm vi nhà máy }
   /admin/v1/hr-sync:
     get:
@@ -76,6 +87,7 @@ paths:
                     attempts: { type: integer }
                     lastError: { type: string, nullable: true }
                     updatedAt: { type: string, format: date-time }
+        "401": { description: Chưa đăng nhập hoặc token không hợp lệ }
         "403": { description: Không phải SYSTEM_ADMIN }
   /admin/v1/audit:
     get:
@@ -102,6 +114,7 @@ paths:
                     actor: { type: string, nullable: true }
                     target: { type: string }
                     details: { type: object, additionalProperties: { type: string } }
+        "401": { description: Chưa đăng nhập hoặc token không hợp lệ }
         "403": { description: Không phải SYSTEM_ADMIN }
   /admin/v1/audit/verification:
     get:
@@ -118,6 +131,7 @@ paths:
                   valid: { type: boolean, description: "true nếu mọi dòng khớp hash" }
                   checked: { type: integer, format: int64, description: "Số dòng đã kiểm, tới dòng hỏng đầu tiên" }
                   brokenAt: { type: integer, format: int64, nullable: true, description: "seq của dòng hỏng đầu tiên, null nếu nguyên vẹn" }
+        "401": { description: Chưa đăng nhập hoặc token không hợp lệ }
         "403": { description: Không phải SYSTEM_ADMIN }
   /auth/v1/login:
     post:
@@ -142,3 +156,6 @@ paths:
       summary: Khóa công khai của Identity (xem identity.openapi.yaml)
       responses:
         "200": { description: JWKS, content: { application/json: { schema: { $ref: "identity.openapi.yaml#/components/schemas/Jwks" } } } }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }

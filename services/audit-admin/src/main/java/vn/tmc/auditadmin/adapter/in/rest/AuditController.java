@@ -15,7 +15,7 @@ import vn.tmc.auditadmin.application.port.in.IAuditQuery;
 import vn.tmc.auditadmin.domain.AuditEntry;
 import vn.tmc.auditadmin.domain.AuditHashChain;
 import vn.tmc.platform.security.AccessDeniedException;
-import vn.tmc.platform.security.PrincipalHeaders;
+import vn.tmc.platform.security.PrincipalResolver;
 
 /**
  * Read only on purpose: there is no POST, PUT, PATCH or DELETE for audit data (UC-11 exception
@@ -24,9 +24,11 @@ import vn.tmc.platform.security.PrincipalHeaders;
 @RestController
 public class AuditController {
   private final IAuditQuery query;
+  private final PrincipalResolver principals;
 
-  public AuditController(IAuditQuery query) {
+  public AuditController(IAuditQuery query, PrincipalResolver principals) {
     this.query = query;
+    this.principals = principals;
   }
 
   @GetMapping("/admin/v1/audit")
@@ -36,14 +38,9 @@ public class AuditController {
       @RequestParam(required = false) Instant to,
       @RequestParam(required = false) String action,
       @RequestParam(required = false) String actor) {
-    var caller =
-        PrincipalHeaders.parse(
-            http.getHeader("X-Subject"),
-            http.getHeader("X-Roles"),
-            http.getHeader("X-Scope-Factories"),
-            http.getHeader("X-Scope-Gates"));
+    var caller = principals.resolve(http::getHeader);
     if (caller == null) {
-      throw new AccessDeniedException("unauthenticated");
+      throw new Unauthenticated();
     }
     return query.search(caller, from, to, action, actor);
   }
@@ -51,20 +48,29 @@ public class AuditController {
   /** AC-05: is the stored log still intact? */
   @GetMapping("/admin/v1/audit/verification")
   public AuditHashChain.Verification verify(HttpServletRequest http) {
-    var caller =
-        PrincipalHeaders.parse(
-            http.getHeader("X-Subject"),
-            http.getHeader("X-Roles"),
-            http.getHeader("X-Scope-Factories"),
-            http.getHeader("X-Scope-Gates"));
+    var caller = principals.resolve(http::getHeader);
     if (caller == null) {
-      throw new AccessDeniedException("unauthenticated");
+      throw new Unauthenticated();
     }
     return query.verifyChain(caller);
   }
 
+  /** No caller: no token, a bad or expired token, or dev headers where they are off. */
+  static final class Unauthenticated extends RuntimeException {
+    Unauthenticated() {
+      super("unauthenticated");
+    }
+  }
+
   @RestControllerAdvice
   static class Errors {
+    @ExceptionHandler(Unauthenticated.class)
+    ResponseEntity<Map<String, String>> unauthenticated(Unauthenticated e) {
+      return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+          .header("WWW-Authenticate", "Bearer")
+          .body(Map.of("error", "UNAUTHENTICATED"));
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
     ResponseEntity<Map<String, String>> forbidden(AccessDeniedException e) {
       return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "FORBIDDEN"));
