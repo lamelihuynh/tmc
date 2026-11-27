@@ -20,7 +20,12 @@ Khi bắt tay hiện thực module sổ cái `attendance` theo ADR-11 và ADR-15
 
 ---
 
+## Phản ánh của Team D (kiosk, consumer trung tâm, tích hợp HR)
+
+Bài học đầu tiên của Team D là **"bản mới hơn thắng" phải được định nghĩa đúng đối tượng**. Read model hiện diện ban đầu so `aggregateVersion` cho cả nhân viên, như cẩm nang gợi ý; khi viết test với một bản hiệu chỉnh của lượt quét buổi sáng đến sau lượt quét buổi chiều, chúng tôi thấy bản hiệu chỉnh (phiên bản cao hơn) đè mất lượt mới hơn và nhân viên bị báo sai là đã ra. Phiên bản chỉ so được giữa các bản của **cùng một lượt quét**; giữa các lượt khác nhau thì thứ tự đúng là `scannedAt`. Vì vậy read model được đổi thành một dòng cho mỗi `attemptId`, hiện diện là lượt mới nhất (`ProjectionTest.should_not_let_a_correction_of_an_earlier_scan_override_a_later_scan`). Bài học thứ hai đến từ ADR-16: một port không có hàm sửa, xóa cùng test reflection chỉ là lời hứa của mã, vì service đăng nhập database bằng chính chủ sở hữu bảng thì vẫn `UPDATE` được. Tách login Flyway (chủ sở hữu) khỏi login ứng dụng chỉ có `INSERT`, `SELECT`, thêm trigger chặn cả chủ sở hữu và chuỗi băm để phát hiện khi superuser qua mặt, mới biến "chỉ thêm" thành điều kiểm được bằng PostgreSQL thật (`AuditStoreIT`); khi đó `FOR UPDATE` cũng không dùng được nữa nên phải tuần tự hóa bằng advisory lock. Bài học thứ ba là **thử lại không được dựa vào việc broker giao lại thông điệp**: bản đầu của `hr-integration` chỉ xử lý lại một lô `UNKNOWN` khi thông điệp đến lần nữa, mà thông điệp đã được xác nhận thì không bao giờ đến lần nữa, nên lô có thể kẹt mãi. Lưu dòng đã gửi vào `sync_log`, để một job định kỳ tra cứu HR trước rồi mới gửi lại có backoff, và coi `IN_PROGRESS` quá hạn là "chưa biết" (`HrRetryTest`) đã đóng khoảng trống đó. Cả ba bài học có chung một điểm: kiến trúc lục giác và bản giả trong bộ nhớ giúp viết nhanh, nhưng chỉ test trên PostgreSQL và RabbitMQ thật mới lộ ra các giả định sai về thứ tự, quyền và thời điểm; những gì chưa qua được bước đó, như ba demo trên stack Docker đầy đủ hay HR thật, chúng tôi ghi rõ ở phần hạn chế thay vì coi là xong.
+
+---
+
 ## Phần chờ các team khác (D-12 hợp nhất)
 
 - **Phản ánh của Team A:** *[Chờ Team A]*
-- **Phản ánh của Team D:** *[Chờ Team D]*

@@ -712,7 +712,7 @@ Nhóm này xử lý việc tiếp nhận lượt quét QR, xác thực thông ti
 | --- | --- | --- | --- | --- |
 | FR-17 | Kiểm soát ra vào và ghi nhận chấm công bằng QR | Hệ thống xác thực mã QR của nhân viên tại trạm. Nếu hợp lệ, tự động gọi API của Turnstile Control System để mở cổng và lưu thành một giao dịch chấm công. Các mã không hợp lệ sẽ bị từ chối trực tiếp tại trạm. | Turnstile Control System | Cao |
 | FR-18 | Chống quét lặp (Anti- passback) | Hệ thống tự động ngăn chặn một nhân viên vào hoặc ra hai lần liên tiếp. Khi phát hiện vi phạm, hệ thống từ chối lệnh mở cổng, lưu sự kiện vi phạm và gửi cảnh báo ngay lập tức đến màn hình trực của bảo vệ. | Security Guard | Trung bình |
-| FR-19 | Sinh và quản lý QR động | Hệ thống tự động sinh mã QR định danh cho nhân viên trên mobile app/web portal. Mã QR này là chuỗi token ngẫu nhiên (chứa thời gian tạo, mã nhân viên và chữ ký số/token bảo mật), tự động thay đổi sau mỗi khoảng thời gian ngắn (đề xuất 30 \- 60 giây, có thể cấu hình được) và chỉ có giá trị sử dụng một lần. | Employee, System Administrator | Cao |
+| FR-19 | Sinh và quản lý QR động | Ứng dụng nhân viên đăng ký khóa công khai của thiết bị (ECDSA P-256, mỗi nhân viên tối đa một thiết bị `ACTIVE`; khóa riêng không rời thiết bị) và tự sinh mã QR động trên mobile app/web: mỗi mã là token JWS `ES256` ký bằng khóa riêng của thiết bị đã đăng ký, chỉ chứa định danh nội bộ của nhân viên và thời gian tạo, hết hạn (mặc định 30 giây, tối đa 60 giây), tự đổi sau mỗi chu kỳ ngắn và chỉ có giá trị sử dụng một lần. Hệ thống không cấp QR tĩnh dưới bất kỳ hình thức nào, kể cả qua email (ADR-12). | Employee, System Administrator | Cao |
 | FR-20 | Xử lý ra vào ngoại lệ | Cho phép bảo vệ xác minh nhân sự và điều khiển mở cổng thủ công qua hệ thống khi xảy ra sự cố thiết bị hoặc lỗi QR. Thao tác này bắt buộc nhập lý do, đánh dấu giao dịch là ngoại lệ và được ghi nhận vào audit log. | Security Guard, Turnstile Control System | Cao |
 
 ### 4.2.4 Nhóm Attendance Reporting & Auditing
@@ -776,7 +776,7 @@ Nhóm này quản lý tài khoản, quyền truy cập, cấu hình chung, giám
 | NFR-02 | Bảo mật: audit log | Ghi lại lịch sử thao tác (ai, làm gì, lúc nào, từ đâu, kết quả) cho đăng nhập, thay đổi hồ sơ, cấp/thu hồi QR, mở cổng thủ công, cấu hình, v.v. Log chỉ được thêm, không ai sửa hoặc xóa. | 100% thao tác thuộc danh mục có log. Không tài khoản nào xóa/sửa được log. Lưu trữ tối thiểu 12 tháng. Truy vấn log trả kết quả ≤ 5 giây. |
 | NFR-03 | Bảo mật: xác thực và phiên | Tài khoản quản trị phải xác thực mạnh; phiên đăng nhập tự hết hạn khi không hoạt động. | Bắt buộc MFA cho System Administrator và HR Staff. Khóa tạm tài khoản sau 5 lần đăng nhập sai. Hết hạn phiên sau 15 phút không hoạt động. |
 | NFR-04 | Quyền riêng tư: bảo vệ dữ liệu cá nhân | Tuân thủ luật bảo vệ dữ liệu cá nhân. Thu thập tối thiểu (mã nhân viên, họ tên, đơn vị, nhà máy, thời điểm ra vào; không thu sinh trắc học/GPS), mã hóa dữ liệu. | 100% kết nối dùng TLS 1.2 trở lên. Dữ liệu cá nhân mã hóa khi lưu (AES- 256). Không có trường sinh trắc học hoặc vị trí trong cơ sở dữ liệu. |
-| NFR-05 | Bảo mật: chống giả mạo QR | Mã QR không chứa thông tin cá nhân đọc được, là token ngẫu nhiên không đoán được, QR hết hạn/đã dùng/thu hồi phải bị từ chối. | 100% QR hết hạn, đã dùng hoặc bị thu hồi bị từ chối. Token QR tối thiểu 128 bit hoặc có chữ ký số. Kiểm tra token nằm trong ngân sách 2 giây. |
+| NFR-05 | Bảo mật: chống giả mạo QR | Mã QR không chứa thông tin cá nhân đọc được, là token ngẫu nhiên không đoán được, QR hết hạn/đã dùng/thu hồi phải bị từ chối. | 100% QR hết hạn, đã dùng hoặc bị thu hồi bị từ chối. Token QR tối thiểu 128 bit hoặc có chữ ký số. Kiểm tra token nằm trong ngân sách 2 giây. Token phải do thiết bị đã đăng ký và đang `ACTIVE` ký, và chủ token phải là chủ thiết bị; token sống quá 60 giây hoặc mang trường ngoài danh sách cho phép bị từ chối. 100% token bị dùng lại bị từ chối kể cả khi kiosk offline (replay cache cục bộ tại kiosk; dùng lại giữa nhiều kiosk bị gắn bất thường khi đồng bộ) (ADR-12). |
 | NFR-06 | Hiệu năng: thời gian phản hồi tại kiosk | Hệ thống phải đảm bảo thời gian xử lý và phản hồi nhanh chóng tại trạm cổng trong giờ cao điểm. | Thời gian phản hồi tại kiosk \<= 2 giây ở tải đỉnh khoảng 800 giao dịch trong 30 phút mỗi nhà máy. |
 
 <img src="images/page-016-image-01.png" alt="Page 16 image" width="38" />
@@ -785,7 +785,7 @@ Nhóm này quản lý tài khoản, quyền truy cập, cấu hình chung, giám
 | --- | --- | --- | --- |
 | NFR-07 | Độ tin cậy: tính toàn vẹn dữ liệu | Bảo đảm không bị mất mát dữ liệu sự kiện ra vào và chấm công của nhân viên trong quá trình vận hành. | 100% giao dịch quét QR hợp lệ được ghi nhận chính xác; không mất bản ghi chấm công trong điều kiện vận hành bình thường. |
 | NFR-08 | Vận hành: hạn đồng bộ dữ liệu | Dữ liệu chấm công phải được tổng hợp và chuyển sang hệ thống HR/Payroll đúng thời hạn để phục vụ tính lương. | Dữ liệu chấm công hoàn tất truyền tải và sẵn sàng đối soát trước 12:00 trưa ngày 1 hằng tháng. |
-| NFR-09 | Tính sẵn sàng & Dự phòng mất mạng | Hệ thống phải duy trì hoạt động liên tục và có cơ chế xử lý khi mất kết nối mạng nội bộ/internet ngắn hạn. | Trạm kiosk tích hợp cơ chế lưu trữ cục bộ (offline queue) khi mất kết nối và tự động đồng bộ lại dữ liệu về server khi mạng khôi phục. |
+| NFR-09 | Tính sẵn sàng & Dự phòng mất mạng | Hệ thống phải duy trì hoạt động liên tục và có cơ chế xử lý khi mất kết nối mạng nội bộ/internet ngắn hạn. | 0 bản ghi chấm công bị mất hoặc tính trùng và 0 lần mở cổng lặp khi ngắt kết nối tại bất kỳ bước nào của giao dịch quét (P1 đến P7, ADR-11). Kiosk ghi mọi lượt quét vào Kiosk Journal cục bộ (chỉ thêm, chỉ lưu hash của token) **trước** khi gọi mạng; khi mất kết nối kiosk tự xác thực, và tự động giao lại journal về server theo thứ tự khi mạng khôi phục. |
 | NFR-10 | Sao lưu & Khôi phục dữ liệu | Thực hiện sao lưu định kỳ cơ sở dữ liệu hệ thống để phòng ngừa rủi ro sự cố phần cứng hoặc mất dữ liệu. | Có lịch sao lưu tự động hàng ngày/hàng tuần, hỗ trợ khôi phục dữ liệu nhanh chóng và kiểm tra tính toàn vẹn sau khi restore. |
 
 <img src="images/page-017-image-01.png" alt="Page 17 image" width="38" />
@@ -1023,25 +1023,31 @@ công khi hệ thống phục hồi.</td></tr>
 <tr><td>Use-case name</td><td>QR động có thời hạn</td></tr>
 <tr><td>Actor</td><td>Employee (phụ: System Administrator)</td></tr>
 <tr><td>Description</td><td>QR trên mobile app hoặc web portal tự đổi sau một chu kỳ ngắn và chỉ dùng được một lần, để chống<br />
-chụp màn hình hoặc chuyển QR cho người khác.</td></tr>
+chụp màn hình hoặc chuyển QR cho người khác. Mỗi QR được ký bằng khóa riêng của thiết bị đã đăng ký,<br />
+nên app sinh được QR cả khi điện thoại mất mạng (ADR-12).</td></tr>
 <tr><td>Trigger</td><td>Nhân viên mở app hoặc web để lấy QR.</td></tr>
-<tr><td>Precondition</td><td>Nhân viên đang hoạt động, đã được cấp QR và đã đăng nhập vào app hoặc web.</td></tr>
+<tr><td>Precondition</td><td>Nhân viên đang hoạt động và đã đăng nhập vào app hoặc web (lần đầu trên một thiết bị: cần kết nối để<br />
+đăng ký thiết bị ở bước 2).</td></tr>
 <tr><td>Postcondition</td><td>QR hiện hành được hiển thị và tự hết hạn. QR hết hạn hoặc đã dùng bị từ chối khi quét.</td></tr>
 <tr><td>Normal flow</td><td>1. Employee mở mobile app hoặc web portal và đăng nhập.<br />
-2. Hệ thống xác thực nhân viên.<br />
-3. Hệ thống sinh mã QR có thời hạn gắn với nhân viên (đề xuất 30 đến 60 giây, cấu hình được).<br />
+2. Hệ thống xác thực nhân viên. Nếu thiết bị chưa đăng ký: app sinh cặp khóa EC P-256 trên máy (khóa<br />
+riêng không rời thiết bị) và gửi khóa công khai để đăng ký; hệ thống lưu thiết bị ở trạng thái ACTIVE,<br />
+thu hồi thiết bị ACTIVE cũ nếu có, và ghi audit log.<br />
+3. App tự sinh mã QR có thời hạn gắn với nhân viên, ký bằng khóa riêng của thiết bị (mặc định 30 giây,<br />
+tối đa 60 giây), không cần kết nối mạng.<br />
 4. App hiển thị QR kèm đếm ngược thời gian còn lại.<br />
-5. Khi hết hạn, hệ thống tự sinh QR mới thay thế.<br />
-6. Khi QR được quét tại kiosk, hệ thống chỉ chấp nhận mã còn hạn và chưa dùng, rồi đánh dấu mã đã<br />
-dùng.</td></tr>
+5. Khi hết hạn, app tự sinh QR mới thay thế.<br />
+6. Khi QR được quét tại kiosk, hệ thống kiểm chữ ký theo khóa của thiết bị đã đăng ký, chỉ chấp nhận mã<br />
+còn hạn và chưa dùng, rồi đánh dấu mã đã dùng.</td></tr>
 <tr><td>Alternative flows</td><td>Tại bước 1:<br />
-1.1 Nhân viên chọn nhận QR qua email: hệ thống gửi QR tĩnh có hạn theo ngày thay cho QR động<br />
-(xem lưu ý tại mục 6).<br />
+(Luồng 1.1 của M1, gửi QR tĩnh có hạn theo ngày qua email, đã bỏ theo ADR-12.)<br />
 Tại bước 3:<br />
 3.1 System Administrator thay đổi chu kỳ hiệu lực: giá trị mới áp dụng cho các QR sinh sau đó.</td></tr>
 <tr><td>Exception flows</td><td>Tại bước 5:<br />
-5.1 Điện thoại mất kết nối nên không làm mới được QR: app báo không thể làm mới.<br />
-5.2 Nhân viên khôi phục kết nối hoặc nhờ Security Guard xử lý theo UC-06.<br />
+5.1 Điện thoại mất kết nối: app vẫn tự sinh và ký QR mới bằng khóa đã lưu trên máy; chỉ bước đăng ký<br />
+thiết bị (bước 2) cần kết nối.<br />
+5.2 Thiết bị chưa đăng ký mà mất kết nối, hoặc nhân viên không có điện thoại dùng được: nhân viên nhờ<br />
+Security Guard xử lý theo UC-06.<br />
 Tại bước 6:<br />
 6.1 QR hết hạn hoặc đã dùng: kiosk từ chối và hiển thị thông báo yêu cầu làm mới QR.<br />
 6.2 Hệ thống ghi nhận sự kiện bị từ chối.</td></tr>
@@ -1072,7 +1078,8 @@ chấm công vào hoặc ra. Use case này gồm cả các ngoại lệ: QR hế
 máy, cổng, chiều vào/ra, nguồn QR). Thất bại: cổng không mở, lý do hiển thị tại kiosk, sự kiện bị từ<br />
 chối được ghi nhận. Toàn bộ xử lý tại kiosk nằm trong 2 giây ở tải đỉnh.</td></tr>
 <tr><td>Normal flow</td><td>1. Employee hiển thị QR trên app hoặc web portal và đưa vào đầu quét.<br />
-2. Kiosk gửi token QR, mã trạm, thời điểm quét và mã giao dịch duy nhất đến hệ thống TMC.<br />
+2. Kiosk ghi lượt quét vào Kiosk Journal, rồi gửi token QR, mã trạm, thời điểm quét và mã giao dịch duy<br />
+nhất (attempt_id, đồng thời là Idempotency-Key) đến hệ thống TMC.<br />
 3. TMC xác thực chữ ký token, thời hạn, token chưa dùng và chưa bị thu hồi; kiểm tra nhân viên đang<br />
 hoạt động và có quyền vào nhà máy này.<br />
 4. TMC xác định chiều vào hoặc ra theo cấu hình cổng và kiểm tra quy tắc anti-passback.<br />
@@ -1082,8 +1089,8 @@ System.<br />
 7. Kiosk thông báo kết quả; nhân viên đi qua cổng.</td></tr>
 <tr><td>Alternative flows</td><td>Tại bước 1:<br />
 1.1 Kiosk hoặc điện thoại lỗi: Security Guard xử lý theo UC-06.<br />
-1.2 Nhân viên dùng QR nhận qua email: kiosk áp dụng thêm kiểm tra hạn theo ngày; các bước sau giữ<br />
-nguyên.<br />
+(Luồng 1.2 của M1, dùng QR nhận qua email, đã bỏ theo ADR-12: mọi QR là token động ký bằng khóa<br />
+thiết bị.)<br />
 Tại bước 2:<br />
 2.1 Nhân viên vô tình quét lại cùng một QR tại cùng kiosk trong khoảng thời gian ngắn (cấu hình<br />
 được) sau khi đã thành công: hệ thống trả lại kết quả đã có, không mở cổng lần hai và không tạo sự<br />
@@ -1091,16 +1098,18 @@ kiện thứ hai.<br />
 Tại bước 4:<br />
 4.1 Cổng hai chiều: hệ thống xác định chiều theo lượt gần nhất của nhân viên (đang ở ngoài thì là vào,<br />
 đang ở trong thì là ra).</td></tr>
-<tr><td>Exception flows</td><td>Tại bước 2 (mất mạng):<br />
-2.1 Kiosk mất kết nối tới máy chủ TMC: kiosk chuyển sang chế độ offline, kiểm tra chữ ký và hạn<br />
-token cục bộ cùng danh sách thu hồi đã đồng bộ gần nhất. Nếu hợp lệ, kiosk mở cổng qua kết nối cục<br />
-bộ tới controller cổng, lưu giao dịch vào hàng đợi cục bộ (đánh dấu &quot;offline&quot;) và thông báo cho nhân<br />
-viên.<br />
-2.2 Khi mạng khôi phục: kiosk tự đẩy hàng đợi theo thứ tự thời gian kèm mã giao dịch duy nhất; TMC<br />
-kiểm tra lại (token dùng ở nhiều kiosk, anti-passback), bỏ qua giao dịch đã nhận và đánh dấu giao<br />
-dịch bất thường để HR Staff xử lý ở UC-09.<br />
-2.3 Kiosk không xác thực được khi offline (chưa có dữ liệu đồng bộ hoặc hàng đợi cục bộ lỗi, đầy):<br />
+<tr><td>Exception flows</td><td>Tại bước 2 (mất mạng, theo máy trạng thái của ADR-11):<br />
+2.1 Kiosk mất kết nối tới máy chủ TMC: kiosk tự xác thực token bằng khóa thiết bị, danh sách thu hồi và<br />
+danh bạ nhân viên (trạng thái, nhà máy) đã đồng bộ gần nhất, kiểm tra replay cache cục bộ; ghi kết quả<br />
+OFFLINE_OPENED hoặc OFFLINE_DENIED vào Kiosk Journal trước khi mở cổng qua Local Gate Link và<br />
+thông báo cho nhân viên.<br />
+2.2 Khi mạng khôi phục: kiosk giao các dòng journal chưa bàn giao theo thứ tự journal_seq, giữ nguyên<br />
+attempt_id; TMC bỏ qua attempt_id đã nhận, gắn bất thường (token dùng ở nhiều kiosk, anti-passback)<br />
+không tính công để HR Staff xử lý ở UC-09, và không bao giờ gửi lại lệnh mở cổng.<br />
+2.3 Kiosk không xác thực được khi offline (chưa có dữ liệu đồng bộ hoặc không ghi được journal):<br />
 kiosk không mở cổng, báo lỗi và Security Guard xử lý theo UC-06; sự cố được cảnh báo theo UC-05.<br />
+2.4 Kiosk gửi được nhưng mất phản hồi: kiosk gửi lại cùng attempt_id; nếu lượt đã có kết quả, TMC trả<br />
+lại kết quả đã lưu; nếu đang xử lý, kiosk hỏi lại có giới hạn rồi báo &quot;chưa xác định&quot;, không tự mở cổng.<br />
 Tại bước 3:<br />
 3.1 QR hết hạn: từ chối, kiosk báo &quot;QR hết hạn, hãy làm mới QR&quot;; sự kiện từ chối được ghi nhận.<br />
 3.2 QR đã dùng (quét trùng khác với 2.1, chụp màn hình hoặc chuyển QR): từ chối, ghi nhận sự kiện<br />
@@ -1112,12 +1121,12 @@ Tại bước 4:<br />
 và cảnh báo ngay cho Security Guard. Nếu xác minh hợp lệ (ví dụ quên quét lượt trước), Security<br />
 Guard xử lý theo UC-06 và HR Staff hiệu chỉnh ở UC-09.<br />
 Tại bước 5:<br />
-5.1 API Turnstile Control System timeout hoặc lỗi: không báo thành công; kiosk yêu cầu quét lại,<br />
-token chưa bị đánh dấu đã dùng, sự kiện ghi trạng thái &quot;chưa xác định&quot;cho đến khi có kết quả xác<br />
-nhận.<br />
+5.1 Turnstile Control System báo lỗi phần cứng: lượt chuyển GATE_FAILED, token được nhả để nhân viên<br />
+quét lại. Timeout: lượt chuyển GATE_UNKNOWN, kiosk nhận &quot;chưa xác định&quot;, token vẫn bị giữ, TMC<br />
+không gửi lại lệnh mở mà đối soát trạng thái cổng để chốt COMMITTED hoặc GATE_FAILED.<br />
 Tại bước 6:<br />
-6.1 Không lưu được sự kiện chấm công: không bỏ qua sự kiện; hệ thống đưa vào hàng đợi bền vững<br />
-để ghi lại và chỉ xác nhận hoàn tất khi đã được lưu an toàn.</td></tr>
+6.1 Không lưu được kết quả sau khi cổng đã mở: lượt đã ghi GATE_COMMANDED trước lệnh mở được phục<br />
+hồi sang GATE_UNKNOWN rồi đối soát chốt công, nên không mất công của nhân viên.</td></tr>
 </tbody>
 </table>
 
@@ -1429,6 +1438,12 @@ Bảng 7.1.1: Danh sách Architecture Decision Records
 | ADR-08 | Sử dụng Centralized Identity + RBAC + Audit Logging cho xác thực và phân quyền | AC-04, AC-05 |
 | ADR-09 | Áp dụng Privacy by Design và tối thiểu hóa dữ liệu cá nhân được lưu trữ/truyền tải | AC-04, AC-06 |
 | ADR-10 | Mỗi microservice sở hữu dữ liệu nghiệp vụ của mình; Reporting sử dụng read model riêng | AC-08, AC-09, AC-10 |
+| ADR-11 (M2) | Offline-first store-and-forward với máy trạng thái giao dịch tại cổng; Kiosk Journal ghi trước khi gọi mạng | AC-02, AC-03, AC-10 |
+| ADR-12 (M2) | QR động có chữ ký, ràng buộc thiết bị và chống replay; loại bỏ QR tĩnh | AC-04, AC-05, AC-06 |
+| ADR-13 (M2) | Chốt thành phần điều phối luồng quét tại biên (Edge Access Orchestrator) là Gate Station | AC-01, AC-09 |
+| ADR-14 (M2) | Gate Station có cơ sở dữ liệu riêng `gate_store` trên PostgreSQL của Edge | AC-09, AC-10 |
+| ADR-15 (M2) | Một exchange sự kiện dùng chung `tmc.events` và outbox dùng chung trong `platform/messaging` | AC-02, AC-03, AC-05 |
+| ADR-16 (M2) | Nhật ký audit chỉ thêm, có chuỗi băm, ghi bằng login chỉ INSERT | AC-05 |
 
 <table>
 <tbody>
@@ -1806,6 +1821,8 @@ Hình 3.1 cho thấy các service nghiệp vụ, các thành phần hỗ trợ v
 
 *Hình 12.1.1 Tổng quan kiến trúc Microservices và Event-Driven của TMC*
 
+> Cập nhật M2: hình này giữ bản M1; các thành phần mới (Kiosk Journal, Replay Cache, Device Key Registry, exchange `tmc.events`) được vẽ trong các hình của [`docs/report/04-views-update.md`](report/04-views-update.md).
+
 <img src="images/page-042-image-01.png" alt="Page 42 image" width="30" />
 
 Tại tuyến truy cập, User/QR cung cấp kết quả xác thực, Gate Station giữ quyết định cho phép ra vào và Attendance giữ dữ liệu chấm công. Tại tuyến sự kiện, Broker phân phối dữ liệu đã commit đến các consumer riêng. Reporting và HR có thể được thay đổi hoặc mở rộng theo tải xử lý riêng, trong khi các hợp đồng với Attendance vẫn được giữ tương thích.
@@ -1873,6 +1890,8 @@ Hình 3.2 phân rã các thành phần bên trong Gate Station và Attendance. G
 
 *Hình 12.4.1 Component của luồng quét QR và điều khiển cổng*
 
+> Cập nhật M2: hình này giữ bản M1; luồng quét theo ADR-11 đến ADR-13 (Gate Station điều phối, trạng thái `GATE_COMMANDED`/`GATE_UNKNOWN` thay cho `PENDING_GATE`) được bổ sung trong [`docs/report/04-views-update.md`](report/04-views-update.md) (Hình 12.4.2, 12.7.1).
+
 <img src="images/page-045-image-01.png" alt="Page 45 image" width="30" />
 
 Nếu Attendance chưa commit được lượt truy cập, luồng online không được xác nhận ghi nhận thành công. Nếu lỗi xảy ra sau khi đã gửi lệnh mở cổng, lượt đang chờ phải tiếp tục được đối chiếu bằng khả năng của thiết bị hoặc quy trình bảo vệ. Hệ thống không suy diễn trạng thái vật lý từ việc request bị timeout, và không mở lại cổng chỉ vì chưa nhận được phản hồi.
@@ -1890,6 +1909,8 @@ Hình 3.3 cho thấy ba consumer với dữ liệu riêng: Reporting cập nhậ
 <img src="images/page-045-image-02.png" alt="Page 45 image" width="653" />
 
 *Hình 12.5.1 Component của xử lý sự kiện và tích hợp HR*
+
+> Cập nhật M2: các consumer trung tâm và tích hợp HR theo mã hiện tại (nhật ký đồng bộ, tra cứu trước khi gửi lại, chuỗi băm audit) được vẽ lại ở Hình 12.5.2 trong [`docs/report/04-views-update.md`](report/04-views-update.md).
 
 <img src="images/page-046-image-01.png" alt="Page 46 image" width="30" />
 
@@ -2018,6 +2039,8 @@ Bảng 13.1.1: Các thành phần kiến trúc trong luồng quét QR và kiểm
 <img src="images/page-050-image-02.png" alt="Page 50 image" width="637" />
 
 *Hình 13.1.1 Sequence diagram của luồng quét QR mở cổng*
+
+> Cập nhật M2: hình này giữ bản M1; sequence và máy trạng thái của lượt quét theo ADR-11, ADR-13 nằm trong [`docs/report/04-views-update.md`](report/04-views-update.md) (Hình 13.1.2, 13.1.3, 12.7.1).
 
 <img src="images/page-051-image-01.png" alt="Page 51 image" width="38" />
 
@@ -2289,6 +2312,8 @@ Chứa HR/Payroll System hiện hữu của công ty TMC. Chỉ có duy nhất H
 
 *Hình 15.2.1 Sơ đồ triển khai chi tiết tại một nhà máy*
 
+> Cập nhật M2: hình này giữ bản M1; thay đổi triển khai của ADR-11 đến ADR-16 được ghi trong phần chữ dưới đây và trong [`docs/report/04-views-update.md`](report/04-views-update.md).
+
 Phân tích chi tiết các phân vùng và thành phần bên trong mỗi nhà máy: Phân tích chi tiết các phân vùng và thành phần bên trong mỗi nhà máy:
 
 1\. Phân vùng cổng ra vào \- gate zone \- VLAN Kiosk (PoE) × N cổng:
@@ -2307,11 +2332,11 @@ Phân tích chi tiết các phân vùng và thành phần bên trong mỗi nhà 
 
   - Kiosk (tablet / industrial PC) cấp nguồn và mạng qua cáp PoE (Power over Ethernet) nối vào switch có lưu điện UPS. Trên Kiosk cài đặt ứng dụng Kiosk App với 3 mô-đun cốt lõi:
 
-    1. Offline Token Verifier: Kiểm tra sơ bộ cấu trúc, chữ ký số và thời hạn của token QR bằng khóa công khai đã cache.
+    1. Offline Token Verifier: Khi mất kết nối tới Server Room, kiểm tra cấu trúc, chữ ký số theo khóa công khai của thiết bị đã đăng ký, thời hạn của token QR, trạng thái và nhà máy của nhân viên, và replay cache cục bộ (ADR-12 R2).
 
-    2. Local Cache: Lưu trữ khóa công khai (JWKS), cấu hình trạm cổng và danh sách mã QR/nhân viên bị thu hồi (revocation list).
+    2. Local Cache: Lưu trữ khóa công khai của các thiết bị đã đăng ký (device keys) kèm trạng thái thu hồi, cấu hình trạm cổng và danh bạ nhân viên đủ điều kiện, kéo từ Edge qua `GET /kiosk/v1/sync-bundle`.
 
-    3. Offline Queue (SQLite, mã hóa AES-256): Lưu bền vững các sự kiện quét QR kèm event_id (UUID v7 theo thời gian) khi mất kết nối tới Server Room.
+    3. Kiosk Journal (SQLite, chỉ thêm, mã hóa AES-256; thay cho "Offline Queue" của M1): Ghi **mọi** lượt quét kèm attempt_id (UUID v7) và journal_seq **trước** khi gọi Edge, chỉ lưu SHA-256 của token. Journal là nguồn cho replay cache cục bộ khi offline và được giao lại theo thứ tự journal_seq khi có mạng (ADR-11).
 
   - Turnstile Controller (thiết bị có sẵn): Bộ vi điều khiển cơ-điện tử gắn trực tiếp trong thân cổng xoay. Trong điều kiện bình thường, thiết bị nhận lệnh mở khóa từ Turnstile Control System hiện hữu, trong trường hợp khẩn cấp/offline toàn mạng LAN, có thể nhận tín hiệu qua đường Local Gate Link (relay / RS-485 / TCP) hoặc mở bởi bảo vệ.
 
@@ -2339,17 +2364,17 @@ Phân tích chi tiết các phân vùng và thành phần bên trong mỗi nhà 
 
    - Edge Gateway: Điểm vào duy nhất tại biên, xác thực chứng chỉ mTLS của từng Kiosk (POST /kiosk/v1/scans), kiểm tra JWT của Guard Console, và giới hạn tần suất gọi chống tấn công làm nghẽn cổng.
 
-   - Attendance Service: Điều phối luồng nghiệp vụ chính, nhận yêu cầu quét từ Edge Gateway, gọi QR Verifier, kiểm tra trạng thái trên Redis, kiểm tra cấu hình cổng qua Gate Station Service, gọi Turnstile Adapter mở cổng, và ghi giao dịch vào PostgreSQL primary.
+   - Attendance Service: Nguồn dữ liệu chấm công tại biên (ADR-03, ADR-13): ghi trạng thái lượt quét (máy trạng thái của ADR-11, ghi `GATE_COMMANDED` trước lệnh mở cổng), kết quả cổng, giao dịch chấm công và outbox trong cùng một giao dịch PostgreSQL primary; nhận lô offline từ kiosk; phục hồi và đối soát lượt `GATE_UNKNOWN`.
 
-   - QR Verifier (JWKS + trạng thái QR): Xác thực chữ ký số bất đối xứng của mã QR động/tĩnh, kiểm tra thời gian hiệu lực (exp, iat) và đối chiếu danh sách thu hồi (revocation list).
+   - QR Verifier (trạng thái thiết bị và QR): Xác thực chữ ký số bất đối xứng của mã QR động theo khóa công khai của thiết bị đã đăng ký (Device Key Registry), kiểm tra thời gian hiệu lực (exp, iat) và trạng thái thu hồi của thiết bị. Chỉ đọc: việc đánh dấu token đã dùng thuộc Gate Station (ADR-13).
 
    - Redis: Lưu trữ in-memory tốc độ cao (≤2 ms) cho 2 tác vụ:
 
-     1. Khóa nguyên tử (SET NX EX) trạng thái mã QR một lần: chuyển từ chưa dùng sang RESERVED trong khi chờ gọi Turnstile API, rồi sang USED sau khi mở cổng thành công (nếu Turnstile API lỗi/timeout thì giải phóng khóa để nhân viên quét lại)
+     1. Replay Cache: khóa nguyên tử (SET NX EX) trạng thái mã QR một lần (ADR-12 R1): giữ chỗ trong khi chờ gọi Turnstile API, rồi giữ tới hết hạn token sau khi mở cổng. Turnstile báo lỗi phần cứng thì giải phóng khóa để nhân viên quét lại; Turnstile timeout thì giữ khóa và đối soát, không gửi lại lệnh mở (ADR-11)
 
      2. Lưu trạng thái vào/ra gần nhất (last_direction, last_scan_time, last_gate_id) của từng nhân viên tại nhà máy để kiểm tra quy tắc Anti-passback và chống quét lặp liên tiếp tại cùng Kiosk.
 
-   - Gate Station Service: Quản lý danh mục cổng, hướng cổng (vào / ra / hai chiều), trạng thái bảo trì và theo dõi tín hiệu Heartbeat từ các Kiosk.
+   - Gate Station Service: Thành phần điều phối luồng quét tại biên (Edge Access Orchestrator, ADR-13): nhận yêu cầu quét từ Edge Gateway, gọi QR Verifier, giữ chỗ token và kiểm anti-passback trên Redis, ghi lượt vào Attendance trước khi gọi Turnstile Adapter mở cổng. Đồng thời quản lý danh mục cổng (database `gate_store`, ADR-14), hướng cổng (vào / ra / hai chiều), trạng thái bảo trì và theo dõi tín hiệu Heartbeat từ các Kiosk.
 
 ```text
 - Turnstile Adapter: Cài đặt lớp Anti-Corruption Layer, chuyển đổi lệnh miền nội bộ sang lời gọi
@@ -2360,7 +2385,7 @@ Phân tích chi tiết các phân vùng và thành phần bên trong mỗi nhà 
 
 - Outbox Publisher: Tiến trình chạy nền đọc các bản ghi PENDING trong bảng outbox_events từ PostgreSQL primary và đẩy qua WAN Edge tới Message Broker tại Central Site bằng giao thức AMQPS 5671 (publish attendance.* events).
 
-- Edge Agent (đồng bộ cấu hình, revocation): Tiến trình đồng bộ hai chiều với Central Site qua HTTPS 443: kéo danh sách nhân viên đủ quyền, khóa công khai JWKS, danh sách thu hồi QR (revocation list) và cấu hình trạm cổng mới nhất từ User/QR Service & Identity Service về lưu tại Edge Node.
+- Edge Agent (đồng bộ cấu hình, revocation): Tiến trình đồng bộ hai chiều với Central Site qua HTTPS 443: kéo danh sách nhân viên đủ quyền, khóa công khai của các thiết bị đã đăng ký kèm trạng thái thu hồi (device keys, ADR-12), khóa công khai JWKS, và cấu hình trạm cổng mới nhất từ User/QR Service & Identity Service về lưu tại Edge Node; kiosk lấy lại các dữ liệu này từ Edge qua `GET /kiosk/v1/sync-bundle`.
 
 Edge Node B \- STANDBY (warm, cùng cấu hình: 4 vCPU / 16 GB RAM / SSD RAID1):
 
@@ -2573,9 +2598,9 @@ Tuân thủ ADR-06 (Turnstile Adapter / Anti-Corruption Layer), ADR-07 (HR Integ
 
 2\. Request Header :
 
-- Authorization: Bearer \<TURNSTILE_EDGE_API_TOKEN\> (kết hợp chứng chỉ mTLS nội bộ)
+- Authorization: Bearer \<HR_PAYROLL_API_TOKEN\> (kết hợp chứng chỉ mTLS nội bộ; không dùng token của Turnstile)
 
-- Idempotency-key: cmd-ts-01928a7b-4c1e-7f00-8a11-39b0d82e1001 (bắt buộc để đảm bảo nếu gói tin mạng retry thì cổng xoay không mở 2 lần)
+- Idempotency-Key: \<batch_id\> (bắt buộc; gửi lại cùng khóa thì HR/Payroll không được nhập dữ liệu trùng. Khi lời gọi trước không có kết quả rõ, TMC tra cứu GET /api/v1/attendance-batches/{batch_id}/status trước và chỉ gửi lại với cùng khóa khi HR trả 404; xem `docs/api/hr-payroll.openapi.yaml`)
 
 ```text
 - X-Correlation-Id: corr-bd-20261017-064512-001

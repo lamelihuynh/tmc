@@ -1,6 +1,6 @@
 # Cập nhật Các góc nhìn Kiến trúc (Task 1.2)
 
-> Phần này trả lời yêu cầu **Task 1.2** của đề bài M2: cập nhật Module View, Component & Connector View và Allocation/Deployment View phản ánh thay đổi từ ADR-11, ADR-12 và ADR-13. Tệp gồm **sơ đồ bảo mật và danh tính của Team C** (R-C) và **máy trạng thái lượt quét cùng luồng Outbox / Exchange `tmc.events` (ADR-15) của Team B**; sơ đồ của Team A (luồng quét QR 15.2) và Team D (HR) sẽ được hợp nhất tại D-12.
+> Phần này trả lời yêu cầu **Task 1.2** của đề bài M2: cập nhật Module View, Component & Connector View và Allocation/Deployment View phản ánh thay đổi từ ADR-11, ADR-12 và ADR-13. Tệp gồm **sơ đồ bảo mật và danh tính của Team C** (R-C) và **máy trạng thái lượt quét cùng luồng Outbox / Exchange `tmc.events` (ADR-15) của Team B**, và **các consumer trung tâm cùng tích hợp HR/Payroll của Team D** (mục 4); sơ đồ của Team A (luồng quét QR 15.2) sẽ được hợp nhất tại D-12.
 
 ---
 
@@ -216,7 +216,74 @@ flowchart LR
 
 ---
 
-## 4. Phần Team A, D *(chờ ghép khi hợp nhất D-12)*
+## 4. Consumer trung tâm và tích hợp HR/Payroll (Team D)
+
+Mục này cập nhật mục 12.5 của M1 (Hình 12.5.1) theo mã hiện tại: ba consumer `reporting`, `hr-integration`, `audit-admin` mỗi service có hàng đợi, DLQ, database và bảng chống trùng riêng (ADR-10, ADR-15); `hr-integration` giữ nhật ký đồng bộ và tra cứu HR trước khi gửi lại (ADR-07, D-06); `audit-admin` giữ nhật ký chỉ thêm có chuỗi băm (ADR-16). Luồng chi tiết của HR và của chuỗi băm: [07-implementation.md](07-implementation.md), Hình 18.4.1 và 18.4.2.
+
+### 4.1. Component & Connector View — Consumer trung tâm và tích hợp HR (bổ sung cho mục 12.5 M1)
+
+```mermaid
+flowchart LR
+  att["attendance :8082 (Edge)<br/>outbox_events"]
+  src["user-qr, identity, gate-station<br/>AuditOutbox"]
+  ex[["RabbitMQ tmc.events<br/>topic exchange"]]
+  portal["web-portal :5173<br/>Authorization: Bearer"]
+  idn["identity :8087<br/>/.well-known/jwks.json"]
+  hrs["HR/Payroll System (ngoài)"]
+
+  subgraph rep["reporting :8084"]
+    rq["tmc.reporting.attendance<br/>+ .dlq"]
+    ruc["ProjectAttendanceEventUseCase<br/>FraudRule: ImpossibleTravelRule"]
+    rdb[("DB reporting<br/>processed_messages<br/>attendance_projection<br/>fraud_alerts")]
+  end
+  subgraph hri["hr-integration :8085"]
+    hq["tmc.hr.attendance<br/>+ .dlq"]
+    huc["SyncAttendanceEventUseCase<br/>ReconcileJob, PayrollDeadlineCheck"]
+    hp{{"IHrPayrollPort<br/>Simulated hoặc HTTP adapter"}}
+    hdb[("DB hr_integration<br/>processed_messages<br/>sync_log")]
+  end
+  subgraph aud["audit-admin :8086"]
+    aq["tmc.audit.events<br/>+ .dlq"]
+    auc["RecordAuditUseCase<br/>AuditHashChain"]
+    adb[("DB audit_admin<br/>processed_messages<br/>audit_entries, login chỉ INSERT")]
+  end
+
+  att -->|"attendance.*"| ex
+  src -->|"*.AuditRecorded"| ex
+  ex -->|"attendance.*<br/>chiếu Confirmed, Corrected"| rq
+  ex -->|"attendance.AttendanceConfirmed<br/>attendance.AttendanceCorrected"| hq
+  ex -->|"*.AuditRecorded"| aq
+  rq --> ruc --> rdb
+  hq --> huc --> hdb
+  huc --> hp
+  hp -->|"POST attendance-batches<br/>GET .../status, Idempotency-Key = batch_id"| hrs
+  aq --> auc --> adb
+  portal -->|"GET /supervision/v1/presence, /alerts"| ruc
+  portal -->|"GET /admin/v1/hr-sync"| huc
+  portal -->|"GET /admin/v1/audit, /audit/verification"| auc
+  ruc -.->|"JWKS"| idn
+  huc -.->|"JWKS"| idn
+  auc -.->|"JWKS"| idn
+  portal -->|"POST /auth/v1/login"| idn
+```
+
+*Hình 12.5.2 Component và connector của các consumer trung tâm và tích hợp HR/Payroll (Team D).*
+
+| Connector | Ngữ nghĩa | Bằng chứng |
+| --- | --- | --- |
+| `tmc.events` → hàng đợi riêng mỗi consumer | Giao ít nhất một lần; chống trùng bằng `processed_messages` trong cùng transaction với handler; lỗi lặp lại sau 3 lần vào `<hàng đợi>.dlq`, gauge `tmc.rabbitmq.dlq.depth` | `AttendanceEventListenerIT`, `HrAttendanceListenerIT`, `AuditEventListenerIT`, `PresencePersistenceIT.should_roll_back_the_projection_and_the_marker_when_the_handler_fails` |
+| `hr-integration` → HR/Payroll | Lô một dòng; `Idempotency-Key = batch_id`; kết quả không rõ thì tra cứu trước, chỉ gửi lại khi HR trả 404; job đối soát định kỳ có backoff | `SyncAttendanceEventTest`, `HrRetryTest`, `HttpHrPayrollAdapterTest` |
+| Portal → ba service | JWT của identity kiểm qua JWKS; thiếu hoặc sai token `401`, không đủ quyền `403` | `BearerTokenApiTest` (ba service), `apps/web-portal/src/lib/auth.test.ts` |
+
+### 4.2. Module View & Deployment View (Phần Team D)
+
+| Góc nhìn | Thay đổi chi tiết trong mã hiện tại |
+| --- | --- |
+| **Module View** | - **`services/reporting`** (`vn.tmc.reporting`): `domain` (`ScanRecord`, `Presence`, `FraudRule`, `ImpossibleTravelRule`, `FraudAlert`); `application.port.out` (`IPresenceRepository`, `IFraudAlertStore`); `adapter.out.inmem` (`InMemoryPresenceRepository`, `InMemoryFraudAlertStore`) và `adapter.out.persistence` (`JdbcPresenceRepository`, `JdbcFraudAlertStore`).<br/>- **`services/hr-integration`** (`vn.tmc.hrintegration`): `domain` (`SyncRecord`, `SyncStatus`, `PayrollLine`); `application.usecase` (`SyncAttendanceEventUseCase`, `PayrollDeadlineCheck`, `SyncMonitoringService`); `application.port.out` (`IHrPayrollPort`, `ISyncLogRepository`); adapter `SimulatedHrPayrollAdapter`, `HttpHrPayrollAdapter`, `InMemorySyncLogRepository`, `JdbcSyncLogRepository`.<br/>- **`services/audit-admin`** (`vn.tmc.auditadmin`): `domain` (`AuditEntry`, `AuditHashChain`); `application.port.out.IAuditStore` (chỉ `append`, `search`, `count`, `verifyChain`); adapter `InMemoryAuditStore`, `JdbcAuditStore`.<br/>- Mỗi service có `adapter.in.messaging.DlqMonitor` và `ArchitectureTest` (`HexagonalRules`). |
+| **Deployment View** | - **PostgreSQL Central (`:5433`):** database `reporting` (Flyway `V1__processed_messages`, `V2__presence`, `V3__fraud_alerts`), `hr_integration` (`V1`, `V2__sync_log`), `audit_admin` (`V1`, `V2__audit_entries`; Flyway chạy bằng chủ sở hữu `auditadmin`, service chạy bằng `auditadmin_app` chỉ `SELECT`, `INSERT`).<br/>- **RabbitMQ Central:** hàng đợi `tmc.reporting.attendance`, `tmc.hr.attendance`, `tmc.audit.events`, mỗi hàng đợi một DLQ.<br/>- **Cấu hình:** `tmc.hr.mode` = `simulated` (mặc định, không có HR thật) hoặc `http` (cần `tmc.hr.url`, `HR_PAYROLL_API_TOKEN`); profile `local`, `inmem` dùng adapter trong bộ nhớ, profile mặc định dùng PostgreSQL. |
+
+---
+
+## 5. Phần Team A *(chờ ghép khi hợp nhất D-12)*
 
 - **Team A:** Sơ đồ luồng quét QR và triển khai tại biên (`15.2`, A-04 `gate_store`).
-- **Team D:** Sơ đồ tích hợp HR/Payroll và đối soát (`D-06`, `D-04`, `D-08`).

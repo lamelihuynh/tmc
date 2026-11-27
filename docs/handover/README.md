@@ -60,8 +60,8 @@ Chưa kiểm chứng (các team không bị chặn bởi những mục này; xem
 | --- | --- |
 | 3 demo trên stack Docker đầy đủ (mới chạy trên `local`) | I-6 |
 | Dừng và bật lại RabbitMQ giữa lúc phát | B-02 |
-| Outbox của identity bền (hiện trong bộ nhớ); read model reporting, log HR, kho audit vẫn trong bộ nhớ | C-11, D-04, D-06, D-08 |
-| JWT mới gắn ở user-qr | A-11, B-06, D-13 |
+| ~~Outbox của identity bền; read model reporting, log HR, kho audit trong bộ nhớ~~ Đã xong 27/11: `attendance_projection`, `sync_log`, `audit_entries` trên PostgreSQL (kèm IT) | C-11, D-04, D-06, D-08 |
+| ~~JWT mới gắn ở user-qr~~ Đã xong 27/11 cho reporting, hr-integration, audit-admin, web-portal, employee-app (`BearerTokenApiTest`, vitest) | A-11, B-06, D-13 |
 | `apps/web-portal` `npm test`; CI trên GitHub cho các thay đổi của nhánh | Việc 0 |
 | Trang `/kiosk` quét bằng webcam thật | D-16 |
 | `device-simulator` chưa nằm trong contract test chính sách token | Ghi vào phần hạn chế |

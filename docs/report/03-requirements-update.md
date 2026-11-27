@@ -1,6 +1,6 @@
 # Cập nhật Yêu cầu, Use Case và Đặc tính Kiến trúc (Task 1.1)
 
-> Phần này trả lời yêu cầu **Task 1.1** của đề bài M2: cập nhật các yêu cầu chức năng, phi chức năng, use case và fitness function bị ảnh hưởng bởi các quyết định kiến trúc mới (ADR-11, ADR-12, ADR-13). Tệp gồm phần **Team C** (`FR-19`, `NFR-05`, `UC-07`, `AC-04`, kèm liên đới `NFR-03`) và phần **Team B** (`NFR-09`, `UC-08`); `AC-03` còn chờ bổ sung, Team D hợp nhất tại D-12.
+> Phần này trả lời yêu cầu **Task 1.1** của đề bài M2: cập nhật các yêu cầu chức năng, phi chức năng, use case và fitness function bị ảnh hưởng bởi các quyết định kiến trúc mới (ADR-11, ADR-12, ADR-13). Tệp gồm phần **Team C** (`FR-19`, `NFR-05`, `UC-07`, `AC-04`, kèm liên đới `NFR-03`) và phần **Team B** (`NFR-09`, `UC-08`); `AC-03` do **Team D** bổ sung khi hợp nhất (D-12), dùng cả bằng chứng của Team B.
 
 ---
 
@@ -76,6 +76,20 @@ So với M1 ([`docs/document.md`](../document.md), mục 5.8), **UC-08** đượ
 
 ---
 
-## 4. Phần còn chờ (D-12 hợp nhất)
+## 4. Cập nhật Đặc tính Kiến trúc AC-03 (Team D, kèm bằng chứng Team B)
 
-- **AC-03:** *[Chờ Team B / Team D bổ sung fitness functions]*
+Mục này trả lời phần AC-03 của Task 1.1 (`docs/adr/README.md` mục 3, dòng "6.1 AC-03, AC-04"). M1 định nghĩa **AC-03 Reliability & Data Integrity**: RPO = 0 cho mọi sự kiện chấm công đã xác nhận mở cổng, không mất và không trùng bản ghi (M1 mục 14.1). M2 biến tiêu chí đó thành các fitness function chạy tự động, ở cả biên (ADR-11, ADR-15) lẫn các consumer trung tâm (D-04, D-06, D-08, ADR-16). Tiêu chí về sẵn sàng khi mất mạng (AC-02) dùng chung bằng chứng ở hàng 1.
+
+| Fitness function | Phạm vi | Bằng chứng tự động |
+| --- | --- | --- |
+| **1. Không mất, không trùng tại biên:** gửi lại cùng `attempt_id` tạo đúng một lượt và một sự kiện; timeout cổng không sinh lệnh mở thứ hai; lượt treo được phục hồi rồi đối soát; kiosk offline ghi journal trước và giao lại theo thứ tự, không giao hai lần | `attendance`, `gate-station`, `kiosk-simulator` (Team B, A, D) | `Adr11ResilienceTest`, `RecordScanUseCaseTest`, `KioskAppTest.should_hand_over_offline_rows_in_journal_order_when_the_edge_returns`, `KioskAppTest.should_not_double_hand_over_when_flush_runs_twice`; `make demo-timeout`, `make demo-offline` |
+| **2. Ghi trạng thái và sự kiện nguyên tử, phát có xác nhận:** use case ném lỗi thì cả lượt lẫn outbox rollback; broker dừng thì outbox giữ `PENDING` và phát đúng thứ tự khi bật lại | `attendance`, `platform/messaging` (Team B) | `PersistenceAndBrokerIT.should_roll_back_attempt_and_outbox_when_use_case_throws_after_writes`, `OutboxBrokerRestartIT.should_keep_outbox_pending_while_broker_is_stopped_and_deliver_in_order_once_restarted`, `MessagingInfraIT.should_round_trip_outbox_to_rabbit_to_an_idempotent_consumer` |
+| **3. Consumer lũy đẳng, ghi cùng transaction với dấu chống trùng:** thông điệp giao lại là no-op; handler lỗi thì cả dữ liệu lẫn dấu `processed_messages` đều không được ghi | `reporting`, `audit-admin`, `platform/messaging` (Team D) | `ProjectionTest.should_process_a_redelivered_message_only_once`, `AuditTest.should_keep_one_entry_when_the_same_message_is_delivered_twice`, `PresencePersistenceIT.should_roll_back_the_projection_and_the_marker_when_the_handler_fails`, `MessagingInfraIT.should_roll_the_dedup_marker_back_when_the_handler_fails_in_the_same_transaction` |
+| **4. Read model nhất quán khi sự kiện đến sai thứ tự:** bản cũ hơn của cùng lượt bị bỏ qua (so `aggregateVersion`); hiệu chỉnh lượt cũ không đè lượt mới hơn; dữ liệu còn sau khi khởi động lại | `reporting` (Team D) | `ProjectionTest.should_ignore_an_older_version_of_the_same_scan_that_arrives_late`, `should_not_let_a_correction_of_an_earlier_scan_override_a_later_scan`, `should_apply_a_correction_event_on_top_of_the_original`, `PresencePersistenceIT.should_keep_presence_across_a_restart_of_reporting` |
+| **5. Không gửi trùng và không bỏ sót sang HR/Payroll:** kết quả không rõ thì tra cứu trước, chỉ gửi lại khi HR xác nhận chưa nhận, cùng `Idempotency-Key`; thử lại theo lịch có backoff, không chờ thông điệp được giao lại; dòng kẹt `IN_PROGRESS` được tra cứu | `hr-integration` (Team D) | `SyncAttendanceEventTest.should_look_up_the_result_before_resending_an_unknown_event`, `should_resend_with_the_same_event_id_when_hr_confirms_not_found`, `should_keep_unknown_without_resending_when_lookup_is_inconclusive`; `HrRetryTest` (5 test); `HttpHrPayrollAdapterTest.should_map_each_http_status_to_what_it_says_about_the_batch`; `SyncLogPersistenceIT` |
+| **6. Bản hiệu chỉnh tới được mọi consumer đúng một lần** | `reporting`, `hr-integration` (Team D) | `ProjectionTest.should_apply_a_correction_event_on_top_of_the_original`, `SyncAttendanceEventTest.should_send_a_correction_once_after_the_original_event_was_synced`, `HrRetryTest.should_send_a_correction_even_while_the_original_is_unknown` |
+| **7. Thông điệp lỗi không biến mất:** sau 3 lần thử, thông điệp nằm trong DLQ và được đếm | `hr-integration` (Team D) | `HrAttendanceListenerIT.should_park_a_message_that_keeps_failing_in_the_dead_letter_queue` (gauge `tmc.rabbitmq.dlq.depth`) |
+| **8. Toàn vẹn nhật ký kiểm toán:** login của service không sửa, xóa, TRUNCATE được; ghi song song giữ một chuỗi băm hợp lệ; sửa trái phép bị chỉ ra đúng dòng | `audit-admin` (Team D, ADR-16) | `AuditStoreIT` (4 test), `AuditTest.should_detect_a_modified_entry_through_the_hash_chain` |
+| **9. Hạn đồng bộ NFR-08:** bản ghi chưa `SYNCED` của kỳ bị cảnh báo lúc 08:00 và 12:00 ngày 1 | `hr-integration` (Team D) | `SyncAttendanceEventTest.should_raise_a_deadline_alert_before_noon_on_the_first_day_of_the_month`, `SyncLogPersistenceIT.should_let_the_deadline_alert_count_rows_from_the_database` |
+
+**Chưa chứng minh** (xem [08-limitations.md](08-limitations.md)): RPO = 0 ở mức phần cứng (replication đồng bộ sang Edge Node B là thiết kế, không có trong hạ tầng dự án); 3 kịch bản demo trên stack Docker đầy đủ; đối soát kỳ với Attendance và lô chốt (test `should_send_a_correction_batch_for_missing_or_failed_records` còn `@Disabled`).
