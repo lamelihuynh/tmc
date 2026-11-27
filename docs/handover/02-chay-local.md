@@ -283,6 +283,18 @@ curl -s http://localhost:8087/.well-known/jwks.json
 
 Test tích hợp dùng Testcontainers (`TmcContainers`) nên tự dựng container riêng; chỉ cần Docker đang chạy, không cần `make up`. Toàn repo hiện có 27 test tích hợp.
 
+### 9.1. Chạy thử phần Team D trên hạ tầng thật
+
+Script dựng PostgreSQL central và RabbitMQ bằng Docker, chạy identity (profile `local`) cùng reporting, hr-integration, audit-admin ở profile mặc định, rồi tự kiểm 15 bước: JWT (D-13), read model bền qua khởi động lại (D-04), cảnh báo BD rồi LA (D-05), đồng bộ HR (D-06), chuỗi băm audit và login chỉ INSERT (D-08).
+
+```powershell
+pwsh scripts/demo/team-d-trial.ps1                        # cổng 5433 còn trống
+pwsh scripts/demo/team-d-trial.ps1 -CentralDbPort 55433   # 5433 đang bị dự án khác dùng
+pwsh scripts/demo/team-d-trial.ps1 -Stop                  # dừng các service mà script đã chạy
+```
+
+Script tự xóa các hàng đợi RabbitMQ cũ tạo ra khi chưa có DLQ, và tạo login `auditadmin_app` nếu volume có từ trước 27/11. Sau khi chạy xong, các service vẫn chạy để thử bằng tay, ví dụ đăng nhập portal bằng `supervisor1`. Kết quả ngày 27/11: 15/15 bước qua.
+
 ## 10. Xử lý sự cố
 
 | Triệu chứng | Nguyên nhân | Cách xử lý |

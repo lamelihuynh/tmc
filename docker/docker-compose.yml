@@ -29,7 +29,9 @@ services:
     container_name: tmc-postgres-central
     environment:
       POSTGRES_PASSWORD: postgres
-    ports: ["5433:5432"]
+    # TMC_CENTRAL_DB_PORT moves it when 5433 is taken by another project (services then need the
+    # matching *_DB_URL, see scripts/demo/team-d-trial.ps1)
+    ports: ["${TMC_CENTRAL_DB_PORT:-5433}:5432"]
     volumes:
       - central-data:/var/lib/postgresql/data
       - ./init/central:/docker-entrypoint-initdb.d:ro
