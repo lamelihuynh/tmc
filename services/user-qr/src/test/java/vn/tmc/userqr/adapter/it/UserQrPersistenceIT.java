@@ -29,6 +29,7 @@ import vn.tmc.platform.messaging.TmcExchange;
 import vn.tmc.platform.messaging.jdbc.JdbcOutboxStore;
 import vn.tmc.platform.testsupport.TmcContainers;
 import vn.tmc.userqr.adapter.out.persistence.JdbcDeviceKeyRegistry;
+import vn.tmc.userqr.application.port.out.ActiveDeviceConflictException;
 import vn.tmc.userqr.domain.Device;
 import vn.tmc.userqr.domain.DeviceStatus;
 
@@ -99,7 +100,8 @@ class UserQrPersistenceIT {
     assertThatThrownBy(
             () ->
                 registry.save(Device.register("dev-" + UUID.randomUUID(), employee, key(), now())))
-        .isInstanceOf(DuplicateKeyException.class);
+        .isInstanceOf(ActiveDeviceConflictException.class)
+        .hasCauseInstanceOf(DuplicateKeyException.class);
   }
 
   @Test

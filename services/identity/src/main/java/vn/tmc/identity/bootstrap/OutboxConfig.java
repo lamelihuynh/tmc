@@ -12,6 +12,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import vn.tmc.platform.kernel.IClock;
@@ -19,6 +20,7 @@ import vn.tmc.platform.messaging.EventPublisher;
 import vn.tmc.platform.messaging.InMemoryEventBroker;
 import vn.tmc.platform.messaging.TmcExchange;
 import vn.tmc.platform.messaging.amqp.AmqpEnvelopePublisher;
+import vn.tmc.platform.messaging.jdbc.JdbcOutboxStore;
 import vn.tmc.platform.messaging.outbox.AuditOutbox;
 import vn.tmc.platform.messaging.outbox.InMemoryOutboxStore;
 import vn.tmc.platform.messaging.outbox.OutboxRelay;
@@ -26,10 +28,11 @@ import vn.tmc.platform.messaging.outbox.OutboxStore;
 
 /**
  * Outbox and relay for this service's events (ADR-04, ADR-15): AuditRecorded on routing key {@code
- * identity.AuditRecorded} of {@code tmc.events}. Default profile: in-memory outbox (identity has no
- * database yet, so it is NOT durable) and RabbitMQ with publisher confirms. inmem and local
- * profiles: in-memory outbox and broker, no Docker. The {@link AuditOutbox} bean is ready for C-08:
- * point the IAuditLog bean at it.
+ * identity.AuditRecorded} of {@code tmc.events}. Default profile: JdbcOutboxStore on database
+ * {@code identity} (table outbox_events, Flyway V1, C-11), so pending events survive a restart, and
+ * RabbitMQ with publisher confirms. inmem and local profiles: in-memory outbox and broker, no
+ * Docker, NOT durable. The IAuditLog bean of {@link IdentityConfig} writes into {@link AuditOutbox}
+ * (C-08).
  */
 @Configuration
 @EnableScheduling
@@ -67,9 +70,8 @@ class OutboxConfig {
   @Profile("!inmem & !local")
   static class Broker {
     @Bean
-    OutboxStore outboxStore() {
-      // identity has no database yet: NOT durable
-      return new InMemoryOutboxStore();
+    OutboxStore outboxStore(JdbcTemplate jdbc, ObjectMapper mapper) {
+      return new JdbcOutboxStore(jdbc, mapper);
     }
 
     @Bean

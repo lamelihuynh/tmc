@@ -23,11 +23,7 @@ tmc:
   qr:
     clock-skew-seconds: 60
     max-lifetime-seconds: 60
-    # Employee eligibility forwarded in the sync bundle. MUST equal docs/api/fixtures/employee-seed.json
-    # (EmployeeSeedContractTest). TODO Team C (C-02): HR feed instead of this list.
-    employees:
-      - { employee-uuid: "0192a1c0-0000-7000-8000-000000000001", active: true, factories: [BD, LA] }
-      - { employee-uuid: "0192a1c0-0000-7000-8000-000000000002", active: true, factories: [BD] }
-      - { employee-uuid: "0192a1c0-0000-7000-8000-000000000003", active: false, factories: [BD] }
-      - { employee-uuid: "0192a1c0-0000-7000-8000-000000000004", active: true, factories: [BD, LA] }
-      - { employee-uuid: "0192a1c0-0000-7000-8000-000000000005", active: true, factories: [BD, LA] }
+    # C-02: initial dev seed loaded from docs/api/fixtures/employee-seed.json (inserted only if
+    # absent so durable HR updates in table `employees` survive restarts).
+    employee-seed-enabled: ${TMC_EMPLOYEE_SEED_ENABLED:true}
+    employee-seed-file: ${TMC_EMPLOYEE_SEED_FILE:}

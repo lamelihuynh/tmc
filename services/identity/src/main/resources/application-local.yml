@@ -1,5 +1,14 @@
-# Profile "local": Docker-free, no broker; audit events stay in process memory.
+# Profile "local": Docker-free, no database, no broker; audit events stay in process memory.
 spring:
   autoconfigure:
     exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration
+      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
       - org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration
+tmc:
+  identity:
+    mfa:
+      # C-05: dev TOTP secrets for admin1 and hr1 (dev profiles only)
+      dev-secrets-enabled: true

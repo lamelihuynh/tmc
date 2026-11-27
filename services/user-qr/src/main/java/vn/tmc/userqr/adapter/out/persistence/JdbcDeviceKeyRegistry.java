@@ -9,8 +9,10 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import vn.tmc.userqr.application.port.out.ActiveDeviceConflictException;
 import vn.tmc.userqr.application.port.out.IDeviceKeyRegistry;
 import vn.tmc.userqr.domain.Device;
 import vn.tmc.userqr.domain.DeviceStatus;
@@ -61,20 +63,34 @@ public class JdbcDeviceKeyRegistry implements IDeviceKeyRegistry {
         .findFirst();
   }
 
+  /**
+   * {@code ON CONFLICT} only covers the primary key: a second ACTIVE row for the same employee
+   * still violates {@code uq_one_active_device_per_employee}. That is the loser of two parallel
+   * registrations (C-01); it becomes {@link ActiveDeviceConflictException} and, thrown inside the
+   * transaction, rolls the whole registration back.
+   */
   @Override
   public void save(Device d) {
-    jdbc.update(
-        "INSERT INTO devices ("
-            + COLUMNS
-            + ") VALUES (?, ?, ?, ?, ?, ?) "
-            + "ON CONFLICT (device_id) DO UPDATE SET status = EXCLUDED.status, "
-            + "updated_at = EXCLUDED.updated_at",
-        d.deviceId(),
-        d.employeeUuid(),
-        Base64.getEncoder().encodeToString(d.publicKey().getEncoded()),
-        d.status().name(),
-        Timestamp.from(d.registeredAt()),
-        Timestamp.from(d.updatedAt()));
+    try {
+      jdbc.update(
+          "INSERT INTO devices ("
+              + COLUMNS
+              + ") VALUES (?, ?, ?, ?, ?, ?) "
+              + "ON CONFLICT (device_id) DO UPDATE SET status = EXCLUDED.status, "
+              + "updated_at = EXCLUDED.updated_at",
+          d.deviceId(),
+          d.employeeUuid(),
+          Base64.getEncoder().encodeToString(d.publicKey().getEncoded()),
+          d.status().name(),
+          Timestamp.from(d.registeredAt()),
+          Timestamp.from(d.updatedAt()));
+    } catch (DuplicateKeyException e) {
+      if (d.isActive()) {
+        throw new ActiveDeviceConflictException(
+            "another ACTIVE device exists for this employee", e);
+      }
+      throw e;
+    }
   }
 
   @Override

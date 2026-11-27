@@ -85,6 +85,8 @@ Biến môi trường đáng biết (đều có mặc định cho máy phát tri
 | `GATE_STORE_DB_URL`, `_USER`, `_PASSWORD` | `jdbc:postgresql://localhost:5432/gate_store`, `gatestation`, `gatestation` | gate-station (profile `gate-store`) |
 | `IDENTITY_JWKS_URL`, `TMC_ALLOW_DEV_HEADERS` | `http://localhost:8087/.well-known/jwks.json`, `false` | user-qr |
 | `IDENTITY_JWT_PRIVATE_JWK` | trống (tự sinh khóa, chỉ dev) | identity |
+| `IDENTITY_JWT_PREVIOUS_PUBLIC_JWK` | trống (không đang xoay khóa) | identity (C-12) |
+| `IDENTITY_DB_URL`, `_USER`, `_PASSWORD` | `jdbc:postgresql://localhost:5433/identity`, `identity`, `identity` | identity (outbox audit, C-11) |
 | `EMPLOYEE_SYNC_ENABLED` | `true` | gate-station (làm mới danh bạ từ user-qr mỗi 30 giây) |
 | `REDIS_HOST`, `REDIS_PORT` | `localhost`, `6379` | gate-station |
 | `ATTENDANCE_URL`, `USERQR_URL`, `GATE_STATION_URL` | `:8082`, `:8083`, `:8081` | gate-station, attendance |

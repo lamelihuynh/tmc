@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import vn.tmc.userqr.application.port.out.ActiveDeviceConflictException;
 import vn.tmc.userqr.application.port.out.IDeviceKeyRegistry;
 import vn.tmc.userqr.domain.Device;
 
@@ -26,8 +27,21 @@ public class InMemoryDeviceKeyRegistry implements IDeviceKeyRegistry {
         .findFirst();
   }
 
+  /** Same rule as the PostgreSQL partial unique index, so both adapters keep one contract. */
   @Override
-  public void save(Device device) {
+  public synchronized void save(Device device) {
+    if (device.isActive()) {
+      var other =
+          devices.values().stream()
+              .anyMatch(
+                  d ->
+                      d.isActive()
+                          && d.employeeUuid().equals(device.employeeUuid())
+                          && !d.deviceId().equals(device.deviceId()));
+      if (other) {
+        throw new ActiveDeviceConflictException("another ACTIVE device exists for this employee");
+      }
+    }
     devices.put(device.deviceId(), device);
   }
 

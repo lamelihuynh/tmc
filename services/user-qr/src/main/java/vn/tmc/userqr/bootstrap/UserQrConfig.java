@@ -2,34 +2,42 @@ package vn.tmc.userqr.bootstrap;
 
 import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import vn.tmc.platform.kernel.IClock;
+import vn.tmc.platform.messaging.outbox.AuditOutbox;
 import vn.tmc.platform.security.PrincipalResolver;
 import vn.tmc.platform.security.jwt.JwtPrincipalVerifier;
 import vn.tmc.userqr.adapter.out.crypto.NimbusTokenCodec;
 import vn.tmc.userqr.adapter.out.inmem.InMemoryDeviceKeyRegistry;
 import vn.tmc.userqr.adapter.out.inmem.InMemoryEmployeeDirectory;
+import vn.tmc.userqr.adapter.out.inmem.InMemoryTransactionRunner;
 import vn.tmc.userqr.adapter.out.inmem.LoggingAuditLog;
+import vn.tmc.userqr.adapter.out.messaging.OutboxAuditLog;
 import vn.tmc.userqr.adapter.out.persistence.JdbcDeviceKeyRegistry;
+import vn.tmc.userqr.adapter.out.persistence.JdbcEmployeeDirectory;
+import vn.tmc.userqr.adapter.out.persistence.SpringTransactionRunner;
 import vn.tmc.userqr.application.port.in.IDeviceManagement;
+import vn.tmc.userqr.application.port.in.IEmployeeEligibility;
 import vn.tmc.userqr.application.port.in.IQRValidation;
 import vn.tmc.userqr.application.port.in.ISyncBundle;
 import vn.tmc.userqr.application.port.out.IAuditLog;
 import vn.tmc.userqr.application.port.out.IDeviceKeyRegistry;
 import vn.tmc.userqr.application.port.out.IEmployeeDirectory;
 import vn.tmc.userqr.application.port.out.ITokenCodec;
+import vn.tmc.userqr.application.port.out.ITransactionRunner;
 import vn.tmc.userqr.application.usecase.BuildSyncBundleUseCase;
 import vn.tmc.userqr.application.usecase.DeviceManagementService;
+import vn.tmc.userqr.application.usecase.EmployeeEligibilityService;
 import vn.tmc.userqr.application.usecase.VerifyQrTokenUseCase;
 import vn.tmc.userqr.domain.TokenVerificationPolicy;
 
 /** Composition root: the only place that knows which adapter implements which port. */
 @Configuration
-@EnableConfigurationProperties(EmployeeSeedProperties.class)
 public class UserQrConfig {
 
   @Bean
@@ -64,11 +72,6 @@ public class UserQrConfig {
   }
 
   @Bean
-  IAuditLog auditLog() {
-    return new LoggingAuditLog();
-  }
-
-  @Bean
   TokenVerificationPolicy verificationPolicy(
       @Value("${tmc.qr.clock-skew-seconds:60}") long skew,
       @Value("${tmc.qr.max-lifetime-seconds:60}") long maxLifetime) {
@@ -85,21 +88,19 @@ public class UserQrConfig {
   }
 
   @Bean
-  IDeviceManagement deviceManagement(IDeviceKeyRegistry registry, IAuditLog audit, IClock clock) {
-    return new DeviceManagementService(registry, audit, clock);
+  IDeviceManagement deviceManagement(
+      IDeviceKeyRegistry registry, IAuditLog audit, ITransactionRunner tx, IClock clock) {
+    return new DeviceManagementService(registry, audit, tx, clock);
   }
 
-  /** Seed loaded at start-up; updatedAt = start-up time so a first sync (since EPOCH) gets all. */
   @Bean
-  IEmployeeDirectory employeeDirectory(EmployeeSeedProperties seed, IClock clock) {
-    var now = clock.now();
-    return new InMemoryEmployeeDirectory(
-        seed.employees().stream()
-            .map(
-                e ->
-                    new IEmployeeDirectory.Eligibility(
-                        e.employeeUuid(), e.active(), e.factories(), now))
-            .toList());
+  IEmployeeEligibility employeeEligibility(
+      IEmployeeDirectory employees,
+      IDeviceKeyRegistry registry,
+      IAuditLog audit,
+      ITransactionRunner tx,
+      IClock clock) {
+    return new EmployeeEligibilityService(employees, registry, audit, tx, clock);
   }
 
   @Bean
@@ -107,6 +108,7 @@ public class UserQrConfig {
     return new BuildSyncBundleUseCase(registry, employees, clock);
   }
 
+  /** No database: audit goes to the log only (the in-memory outbox has no broker to reach). */
   @Configuration
   @Profile({"inmem", "local"})
   static class InMemory {
@@ -114,14 +116,60 @@ public class UserQrConfig {
     IDeviceKeyRegistry deviceKeyRegistry() {
       return new InMemoryDeviceKeyRegistry();
     }
+
+    @Bean
+    IEmployeeDirectory employeeDirectory(
+        @Value("${tmc.qr.employee-seed-file:}") String seedFile,
+        @Value("${tmc.qr.employee-seed-enabled:true}") boolean seedEnabled,
+        IClock clock) {
+      var directory = new InMemoryEmployeeDirectory();
+      EmployeeSeedLoader.seedIfAbsent(directory, seedFile, seedEnabled, clock.now());
+      return directory;
+    }
+
+    @Bean
+    IAuditLog auditLog() {
+      return new LoggingAuditLog();
+    }
+
+    @Bean
+    ITransactionRunner transactionRunner() {
+      return new InMemoryTransactionRunner();
+    }
   }
 
+  /**
+   * PostgreSQL: audit becomes AuditRecorded through the outbox table (C-08), and employee
+   * eligibility lives in table {@code employees} (C-02). Registry, directory, outbox and
+   * transaction manager share the one DataSource, so changes and their audit rows commit together.
+   */
   @Configuration
   @Profile("!inmem & !local")
   static class Postgres {
     @Bean
     IDeviceKeyRegistry deviceKeyRegistry(JdbcTemplate jdbc) {
       return new JdbcDeviceKeyRegistry(jdbc);
+    }
+
+    @Bean
+    IEmployeeDirectory employeeDirectory(
+        JdbcTemplate jdbc,
+        @Value("${tmc.qr.employee-seed-file:}") String seedFile,
+        @Value("${tmc.qr.employee-seed-enabled:true}") boolean seedEnabled,
+        IClock clock) {
+      var directory = new JdbcEmployeeDirectory(jdbc);
+      EmployeeSeedLoader.seedIfAbsent(directory, seedFile, seedEnabled, clock.now());
+      return directory;
+    }
+
+    @Bean
+    IAuditLog auditLog(AuditOutbox auditOutbox) {
+      return new OutboxAuditLog(auditOutbox);
+    }
+
+    @Bean
+    ITransactionRunner transactionRunner(PlatformTransactionManager manager) {
+      return new SpringTransactionRunner(new TransactionTemplate(manager));
     }
   }
 }

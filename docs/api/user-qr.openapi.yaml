@@ -30,6 +30,15 @@ paths:
           content: { application/json: { schema: { type: object, properties: { deviceId: { type: string } } } } }
         "400": { description: Khóa không phải EC P-256 hợp lệ }
         "403": { description: Chưa xác thực, không phải EMPLOYEE, hoặc đăng ký cho người khác }
+        "409":
+          description: Hai đăng ký song song cho cùng một nhân viên (C-01); đăng ký kia đã thắng, có thể thử lại
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string, example: CONFLICT }
+                  detail: { type: string, example: CONCURRENT_DEVICE_REGISTRATION }
   /self-service/v1/devices/{deviceId}:
     delete:
       summary: Nhân viên thu hồi thiết bị của chính mình
@@ -50,6 +59,34 @@ paths:
       responses:
         "204": { description: Đã thu hồi (hoặc nhân viên không có thiết bị ACTIVE) }
         "403": { description: Không đủ quyền }
+  /hr/v1/employees/{employeeUuid}/eligibility:
+    put:
+      summary: HR Staff cập nhật trạng thái đủ điều kiện và danh sách nhà máy của nhân viên (C-02). Đặt INACTIVE sẽ tự động thu hồi thiết bị ACTIVE hiện tại
+      parameters:
+        - { name: employeeUuid, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/Subject" }
+        - { $ref: "#/components/parameters/Roles" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, factories]
+              properties:
+                status: { type: string, enum: [ACTIVE, INACTIVE] }
+                factories:
+                  type: array
+                  items: { type: string }
+                  example: [BD, LA]
+      responses:
+        "200":
+          description: Đã cập nhật và ghi nhận vào gói đồng bộ (và audit outbox)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmployeeEligibility" }
+        "400": { description: Trạng thái hoặc danh sách nhà máy không hợp lệ }
+        "403": { description: Chưa xác thực hoặc không có vai trò HR_STAFF }
   /internal/v1/qr/verify:
     post:
       summary: "IQRValidation: chỉ đọc. KHÔNG đánh dấu token đã dùng (việc đó thuộc ITokenReservation của gate-station)"

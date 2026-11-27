@@ -14,9 +14,11 @@ import vn.tmc.platform.security.Role;
 import vn.tmc.userqr.adapter.out.inmem.InMemoryDeviceKeyRegistry;
 import vn.tmc.userqr.adapter.out.inmem.InMemoryEmployeeDirectory;
 import vn.tmc.userqr.adapter.out.inmem.LoggingAuditLog;
+import vn.tmc.userqr.application.port.in.IEmployeeEligibility.Status;
 import vn.tmc.userqr.application.port.out.IEmployeeDirectory;
 import vn.tmc.userqr.application.usecase.BuildSyncBundleUseCase;
 import vn.tmc.userqr.application.usecase.DeviceManagementService;
+import vn.tmc.userqr.application.usecase.EmployeeEligibilityService;
 import vn.tmc.userqr.support.MutableClock;
 import vn.tmc.userqr.support.PhoneSimulator;
 
@@ -76,5 +78,46 @@ class SyncBundleTest {
         .satisfies(e -> assertThat(e.factories()).containsExactly("BD", "LA"));
     // the old constructor still works and simply ships no employees
     assertThat(sync.changedSince(Instant.EPOCH).employees()).isEmpty();
+  }
+
+  // C-02 (moved from identity's AuthenticationTest: eligibility feed belongs to user-qr)
+  @Test
+  void should_publish_employee_eligibility_for_the_edge_and_revoke_device_on_deactivation() {
+    var employee = UUID.randomUUID();
+    var hrActor = UUID.randomUUID();
+    var hr = new Principal(hrActor, Set.of(Role.HR_STAFF), DataScope.all());
+    var directory =
+        new InMemoryEmployeeDirectory(
+            List.of(
+                new IEmployeeDirectory.Eligibility(
+                    employee, true, Set.of("BD", "LA"), clock.now())));
+    var audit = new LoggingAuditLog();
+    var eligibility = new EmployeeEligibilityService(directory, registry, audit, clock);
+    var withEmployees = new BuildSyncBundleUseCase(registry, directory, clock);
+
+    var phone = new PhoneSimulator(employee);
+    var empCaller = new Principal(employee, Set.of(Role.EMPLOYEE), DataScope.all());
+    var deviceId = management.register(empCaller, employee, phone.publicKeyBase64()).deviceId();
+
+    clock.advance(Duration.ofSeconds(5));
+    var cursor = clock.now();
+    clock.advance(Duration.ofSeconds(5));
+
+    eligibility.update(hr, employee, Status.INACTIVE, Set.of("BD"));
+
+    var delta = withEmployees.changedSince(cursor);
+    assertThat(delta.employees()).hasSize(1);
+    assertThat(delta.employees().get(0).employeeUuid()).isEqualTo(employee);
+    assertThat(delta.employees().get(0).status()).isEqualTo("INACTIVE");
+    assertThat(delta.employees().get(0).factories()).containsExactly("BD");
+    assertThat(delta.deviceKeys()).hasSize(1);
+    assertThat(delta.deviceKeys().get(0).deviceId()).isEqualTo(deviceId);
+    assertThat(delta.deviceKeys().get(0).revoked()).isTrue();
+    assertThat(registry.findActiveByEmployee(employee)).isEmpty();
+    assertThat(audit.entries())
+        .containsExactly(
+            new LoggingAuditLog.Entry("DEVICE_REVOKE_BY_STAFF", hrActor, deviceId, "OK"),
+            new LoggingAuditLog.Entry(
+                "EMPLOYEE_ELIGIBILITY_UPDATE", hrActor, employee.toString(), "INACTIVE"));
   }
 }
