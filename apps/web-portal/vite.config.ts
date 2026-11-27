@@ -10,10 +10,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/auth': 'http://localhost:8087',
-      '/security': 'http://localhost:8081',
-      '/kiosk': 'http://localhost:8081',
-      '/supervision': 'http://localhost:8084',
+      '/auth/v1': 'http://localhost:8087',
+      '/security/v1': 'http://localhost:8081',
+      '/kiosk/v1': 'http://localhost:8081',
+      '/supervision/v1': 'http://localhost:8084',
       '/admin/v1/hr-sync': 'http://localhost:8085',
       '/admin/v1/audit': 'http://localhost:8086',
     },

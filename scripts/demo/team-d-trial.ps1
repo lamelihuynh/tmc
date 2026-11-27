@@ -144,8 +144,9 @@ END $$;
 '@
 $grants | & docker exec -i tmc-postgres-central psql -q -U postgres -d audit_admin | Out-Null
 
-$missing = $Services | Where-Object { -not (Test-Path (Join-Path $Root $_.Jar)) }
-if ($missing) {
+# always rebuild: Gradle skips what is up to date, and a stale jar would test old code
+Write-Host 'building jars ...'
+if ($true) {
   Push-Location $Root
   try {
     & .\gradlew.bat -q :services:identity:bootJar :services:reporting:bootJar `
