@@ -63,6 +63,5 @@ Chưa kiểm chứng (các team không bị chặn bởi những mục này; xem
 | Outbox của identity bền (hiện trong bộ nhớ); read model reporting, log HR, kho audit vẫn trong bộ nhớ | C-11, D-04, D-06, D-08 |
 | JWT mới gắn ở user-qr | A-11, B-06, D-13 |
 | `apps/web-portal` `npm test`; CI trên GitHub cho các thay đổi của nhánh | Việc 0 |
-| 21 test `kiosk-simulator` trên Windows | D-14 |
 | Trang `/kiosk` quét bằng webcam thật | D-16 |
 | `device-simulator` chưa nằm trong contract test chính sách token | Ghi vào phần hạn chế |

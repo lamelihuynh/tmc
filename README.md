@@ -79,7 +79,7 @@ Lịch làm việc của 4 team: [mở lịch tương tác](https://htmlpreview.
 ### Chạy trong 4 bước
 
 ```bash
-# 1. Build (lần đầu vài phút). Trên Windows thêm: -x :simulators:kiosk-simulator:test
+# 1. Build (lần đầu vài phút)
 ./gradlew build
 
 # 2. Dựng 5 service local, không cần Docker

@@ -22,11 +22,7 @@ Mọi lệnh chạy từ thư mục gốc của repo. Lệnh Gradle ghi theo ki�
 
 Kết quả mong đợi: `BUILD SUCCESSFUL`, 209 test đơn vị, 10 bỏ qua có chủ đích (số ngày 16/11, macOS). Lần đầu mất vài phút vì tải thư viện.
 
-Trên **Windows**, test của `kiosk-simulator` có thể lỗi do khóa file SQLite (story D-14, chưa kiểm chứng trên Windows). Cho đến khi D-14 xong, nếu gặp lỗi đó thì dùng:
-
-```powershell
-.\gradlew.bat build -x :simulators:kiosk-simulator:test
-```
+Trên **Windows** dùng `.\gradlew.bat build`. Test của `kiosk-simulator` chạy xanh trên Windows từ 27/11 (D-14: journal SQLite được đóng sau mỗi test).
 
 ## 3. Dựng stack local (không cần Docker)
 
@@ -301,7 +297,6 @@ Test tích hợp dùng Testcontainers (`TmcContainers`) nên tự dựng contain
 | App báo không kết nối được dịch vụ đăng nhập | `identity` chưa chạy | Khởi động `identity` (cổng 8087) |
 | Kết quả quét là `LỖI HỆ THỐNG`, mã `DEPENDENCY_UNAVAILABLE` | `attendance` hoặc `user-qr` đang tắt | Xem `.local/*.log`, khởi động lại service đó |
 | `QR_EXPIRED` dù vừa tạo mã | Đồng hồ điện thoại lệch | Bật giờ tự động trên điện thoại |
-| Test `kiosk-simulator` đỏ trên Windows | Khóa file SQLite | Thêm `-x :simulators:kiosk-simulator:test`, theo dõi D-14 |
 | `spotlessCheck` đỏ | Mã chưa định dạng | `./gradlew spotlessApply` |
 | `ArchitectureTest` đỏ | Vi phạm chiều phụ thuộc (ví dụ `domain` import Spring) | Chuyển mã về đúng gói; xem [00-he-thong.md](00-he-thong.md) mục 7 |
 | Test tích hợp báo không tìm thấy Docker | Docker Desktop chưa chạy | Mở Docker Desktop rồi chạy lại |
