@@ -14,8 +14,8 @@ import vn.tmc.platform.messaging.jdbc.JdbcProcessedMessageStore;
 /**
  * Consumer dedup store (ADR-05): table processed_messages (Flyway V1) in the default profile,
  * process memory on the Docker-free inmem and local profiles. The marker and the handler run in one
- * transaction, so a failed handler rolls the marker back and the redelivery is processed again.
- * TODO Team D: move the read model to the same database so it shares that transaction.
+ * transaction, so a failed handler rolls the marker back and the redelivery is processed again. The
+ * read model (JdbcPresenceRepository) uses the same DataSource and joins that transaction.
  */
 @Configuration
 class DedupStoreConfig {

@@ -178,4 +178,65 @@ class ProjectionTest {
 
     assertThat(repo.find(employee, "BD").orElseThrow().direction()).isEqualTo("EXIT");
   }
+
+  private EventEnvelope scan(
+      String type, UUID attemptId, String direction, long version, String scannedAt) {
+    return new EventEnvelope(
+        Ids.uuidV7(),
+        type,
+        1,
+        attemptId,
+        version,
+        Instant.parse(scannedAt),
+        "c",
+        "attendance-edge",
+        "BD",
+        "BD-GATE-01",
+        Map.of(
+            "employeeUuid", employee.toString(), "direction", direction, "scannedAt", scannedAt));
+  }
+
+  @Test
+  void should_not_let_a_correction_of_an_earlier_scan_override_a_later_scan() {
+    var morning = Ids.uuidV7();
+    // a manually verified morning entry ends with a higher version than an online afternoon exit
+    projection.handle(scan("AttendanceConfirmed", morning, "ENTRY", 6, "2026-11-09T06:45:00Z"));
+    projection.handle(scan("AttendanceConfirmed", Ids.uuidV7(), "EXIT", 5, "2026-11-09T14:45:00Z"));
+    assertThat(repo.find(employee, "BD").orElseThrow().direction()).isEqualTo("EXIT");
+
+    // HR corrects the morning scan (still ENTRY, a few minutes earlier): version 7
+    projection.handle(scan("AttendanceCorrected", morning, "ENTRY", 7, "2026-11-09T06:40:00Z"));
+
+    var now = repo.find(employee, "BD").orElseThrow();
+    assertThat(now.direction()).isEqualTo("EXIT");
+    assertThat(now.at()).isEqualTo(Instant.parse("2026-11-09T14:45:00Z"));
+  }
+
+  @Test
+  void should_ignore_an_older_version_of_the_same_scan_that_arrives_late() {
+    var attempt = Ids.uuidV7();
+    projection.handle(scan("AttendanceCorrected", attempt, "EXIT", 6, "2026-11-09T06:45:00Z"));
+    projection.handle(scan("AttendanceConfirmed", attempt, "ENTRY", 5, "2026-11-09T06:45:00Z"));
+
+    assertThat(repo.find(employee, "BD").orElseThrow().direction()).isEqualTo("EXIT");
+  }
+
+  @Test
+  void should_skip_a_scan_with_an_unreadable_time_instead_of_failing_the_message() {
+    projection.handle(
+        new EventEnvelope(
+            Ids.uuidV7(),
+            "AttendanceConfirmed",
+            1,
+            Ids.uuidV7(),
+            1,
+            Instant.now(),
+            "c",
+            "attendance-edge",
+            "BD",
+            "BD-GATE-01",
+            Map.of("employeeUuid", employee.toString(), "direction", "ENTRY")));
+
+    assertThat(repo.byFactory("BD")).isEmpty();
+  }
 }

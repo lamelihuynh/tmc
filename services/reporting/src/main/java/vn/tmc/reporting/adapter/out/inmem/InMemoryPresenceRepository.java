@@ -1,31 +1,52 @@
 package vn.tmc.reporting.adapter.out.inmem;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import vn.tmc.reporting.application.port.out.IPresenceRepository;
 import vn.tmc.reporting.domain.Presence;
+import vn.tmc.reporting.domain.ScanRecord;
 
-/** Process-memory read model. TODO Team D: PostgreSQL table updated with processed_messages. */
+/** Process-memory read model for the inmem and local profiles; same rules as the JDBC one. */
 public class InMemoryPresenceRepository implements IPresenceRepository {
-  private record Key(UUID employeeUuid, String factoryCode) {}
+  /** Latest first; ties broken the same way as the SQL ORDER BY in the JDBC adapter. */
+  static final Comparator<ScanRecord> LATEST_FIRST =
+      Comparator.comparing(ScanRecord::scannedAt)
+          .thenComparingLong(ScanRecord::aggregateVersion)
+          .thenComparing(ScanRecord::attemptId)
+          .reversed();
 
-  private final Map<Key, Presence> rows = new ConcurrentHashMap<>();
+  private final Map<UUID, ScanRecord> scans = new ConcurrentHashMap<>();
 
   @Override
-  public Optional<Presence> find(UUID employeeUuid, String factoryCode) {
-    return Optional.ofNullable(rows.get(new Key(employeeUuid, factoryCode)));
+  public void upsertScan(ScanRecord scan) {
+    scans.merge(
+        scan.attemptId(),
+        scan,
+        (stored, candidate) -> candidate.replaces(stored) ? candidate : stored);
   }
 
   @Override
-  public void save(Presence presence) {
-    rows.put(new Key(presence.employeeUuid(), presence.factoryCode()), presence);
+  public Optional<Presence> find(UUID employeeUuid, String factoryCode) {
+    return scans.values().stream()
+        .filter(s -> s.employeeUuid().equals(employeeUuid) && s.factoryCode().equals(factoryCode))
+        .sorted(LATEST_FIRST)
+        .findFirst()
+        .map(ScanRecord::toPresence);
   }
 
   @Override
   public List<Presence> byFactory(String factoryCode) {
-    return rows.values().stream().filter(p -> p.factoryCode().equals(factoryCode)).toList();
+    return scans.values().stream()
+        .filter(s -> s.factoryCode().equals(factoryCode))
+        .collect(Collectors.groupingBy(ScanRecord::employeeUuid))
+        .values()
+        .stream()
+        .map(list -> list.stream().sorted(LATEST_FIRST).findFirst().orElseThrow().toPresence())
+        .toList();
   }
 }
