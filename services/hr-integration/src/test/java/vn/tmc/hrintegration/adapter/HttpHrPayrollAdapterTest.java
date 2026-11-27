@@ -29,13 +29,17 @@ class HttpHrPayrollAdapterTest {
   }
 
   @Test
-  void should_use_batch_id_for_submission_and_lookup_and_keep_original_event_id()
-      throws Exception {
+  void should_use_batch_id_for_submission_and_lookup_and_keep_original_event_id() throws Exception {
     var eventId = UUID.fromString("00000000-0000-4000-8000-000000000001");
     var batchId = UUID.fromString("00000000-0000-4000-8000-000000000002");
     var submission =
         new Submission(
-            eventId, batchId, UUID.randomUUID(), "BD", "ENTRY", Instant.parse("2026-11-24T01:00:00Z"));
+            eventId,
+            batchId,
+            UUID.randomUUID(),
+            "BD",
+            "ENTRY",
+            Instant.parse("2026-11-24T01:00:00Z"));
 
     verifySubmissionAndLookup(submission, eventId, batchId);
   }
@@ -60,7 +64,8 @@ class HttpHrPayrollAdapterTest {
             var headers = exchange.getRequestHeaders();
 
             if ("POST".equals(method) && batches.equals(path)) {
-              postedBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+              postedBody.set(
+                  new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
               postedKey.set(headers.getFirst("Idempotency-Key"));
               postAuth.set(headers.getFirst("Authorization"));
             } else if ("GET".equals(method) && statusPath.equals(path)) {

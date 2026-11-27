@@ -20,8 +20,13 @@ public record SyncRecord(
   }
 
   public SyncRecord(
-      UUID eventId, SyncStatus status, int attempts, String lastError, Instant updatedAt,
-      long aggregateVersion, UUID batchId) {
+      UUID eventId,
+      SyncStatus status,
+      int attempts,
+      String lastError,
+      Instant updatedAt,
+      long aggregateVersion,
+      UUID batchId) {
     this(eventId, status, attempts, lastError, updatedAt, aggregateVersion, batchId, null);
   }
 

@@ -45,10 +45,14 @@ public class HttpHrPayrollAdapter implements IHrPayrollPort {
 
     var batch =
         Map.of(
-            "batch_id", batchId,
-            "factory_code", submission.factoryCode(),
-            "period", period,
-            "records", List.of(record));
+            "batch_id",
+            batchId,
+            "factory_code",
+            submission.factoryCode(),
+            "period",
+            period,
+            "records",
+            List.of(record));
 
     try {
       var request =

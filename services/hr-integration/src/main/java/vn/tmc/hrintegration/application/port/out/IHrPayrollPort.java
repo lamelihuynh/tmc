@@ -14,11 +14,7 @@ public interface IHrPayrollPort {
       Instant scannedAt) {
 
     public Submission(
-        UUID eventId,
-        UUID employeeUuid,
-        String factoryCode,
-        String direction,
-        Instant scannedAt) {
+        UUID eventId, UUID employeeUuid, String factoryCode, String direction, Instant scannedAt) {
       this(eventId, eventId, employeeUuid, factoryCode, direction, scannedAt);
     }
   }

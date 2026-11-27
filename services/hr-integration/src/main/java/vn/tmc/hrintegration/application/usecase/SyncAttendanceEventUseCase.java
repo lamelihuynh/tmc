@@ -55,41 +55,44 @@ public class SyncAttendanceEventUseCase {
     } else {
       if (previous != null && isUncertain(previous)) {
         switch (hr.lookup(previous.batchId())) {
-          case UNKNOWN -> throw new IllegalStateException(
-              "previous HR/Payroll batch is still unresolved: " + previous.batchId());
+          case UNKNOWN ->
+              throw new IllegalStateException(
+                  "previous HR/Payroll batch is still unresolved: " + previous.batchId());
           case ACCEPTED -> log.save(previous.with(SyncStatus.SYNCED, null, clock.now()));
-          case REJECTED -> log.save(
-              previous.with(SyncStatus.FAILED, "rejected by HR/Payroll", clock.now()));
-          case NOT_FOUND -> {
-          }
+          case REJECTED ->
+              log.save(previous.with(SyncStatus.FAILED, "rejected by HR/Payroll", clock.now()));
+          case NOT_FOUND -> {}
         }
       }
 
       var scannedAt = Instant.parse(requiredField(event, "scannedAt"));
-      var period = java.time.YearMonth.from(
-          scannedAt.atZone(java.time.ZoneId.of("Asia/Ho_Chi_Minh")));
+      var period =
+          java.time.YearMonth.from(scannedAt.atZone(java.time.ZoneId.of("Asia/Ho_Chi_Minh")));
 
-      record = new SyncRecord(
-          event.eventId(), SyncStatus.PENDING, 0, null, clock.now(), version, batchId, period);
+      record =
+          new SyncRecord(
+              event.eventId(), SyncStatus.PENDING, 0, null, clock.now(), version, batchId, period);
     }
 
-    var submission = new Submission(
-        event.eventId(),
-        batchId,
-        UUID.fromString(requiredField(event, "employeeUuid")),
-        event.factoryCode(),
-        requiredField(event, "direction"),
-        Instant.parse(requiredField(event, "scannedAt")));
+    var submission =
+        new Submission(
+            event.eventId(),
+            batchId,
+            UUID.fromString(requiredField(event, "employeeUuid")),
+            event.factoryCode(),
+            requiredField(event, "direction"),
+            Instant.parse(requiredField(event, "scannedAt")));
 
     record = record.with(SyncStatus.IN_PROGRESS, null, clock.now());
     log.save(record);
 
     var result = hr.submit(submission);
-    var settled = switch (result) {
-      case ACCEPTED -> record.with(SyncStatus.SYNCED, null, clock.now());
-      case REJECTED -> record.with(SyncStatus.FAILED, "rejected by HR/Payroll", clock.now());
-      case TIMEOUT -> record.with(SyncStatus.UNKNOWN, "no answer from HR/Payroll", clock.now());
-    };
+    var settled =
+        switch (result) {
+          case ACCEPTED -> record.with(SyncStatus.SYNCED, null, clock.now());
+          case REJECTED -> record.with(SyncStatus.FAILED, "rejected by HR/Payroll", clock.now());
+          case TIMEOUT -> record.with(SyncStatus.UNKNOWN, "no answer from HR/Payroll", clock.now());
+        };
     log.save(settled);
   }
 
@@ -100,10 +103,10 @@ public class SyncAttendanceEventUseCase {
 
     switch (hr.lookup(record.batchId())) {
       case ACCEPTED -> log.save(record.with(SyncStatus.SYNCED, null, clock.now()));
-      case REJECTED -> log.save(
-          record.with(SyncStatus.FAILED, "rejected by HR/Payroll", clock.now()));
-      case UNKNOWN -> log.save(
-          record.with(SyncStatus.UNKNOWN, "no answer from HR/Payroll", clock.now()));
+      case REJECTED ->
+          log.save(record.with(SyncStatus.FAILED, "rejected by HR/Payroll", clock.now()));
+      case UNKNOWN ->
+          log.save(record.with(SyncStatus.UNKNOWN, "no answer from HR/Payroll", clock.now()));
       case NOT_FOUND -> {
         return false;
       }

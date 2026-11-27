@@ -32,9 +32,7 @@ public interface EdgeClient {
   record Employee(UUID employeeUuid, String status, List<String> factories) {}
 
   record SyncBundle(
-      List<Journal.Gate> gates,
-      List<Journal.DeviceKey> deviceKeys,
-      List<Employee> employees) {
+      List<Journal.Gate> gates, List<Journal.DeviceKey> deviceKeys, List<Employee> employees) {
 
     public SyncBundle(List<Journal.Gate> gates, List<Journal.DeviceKey> deviceKeys) {
       this(gates, deviceKeys, null);

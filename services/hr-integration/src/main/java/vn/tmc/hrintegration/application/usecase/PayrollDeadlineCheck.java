@@ -35,9 +35,10 @@ public class PayrollDeadlineCheck {
     long outstanding = 0;
     for (var status : SyncStatus.values()) {
       if (status != SyncStatus.SYNCED) {
-        outstanding += log.byStatus(status).stream()
-            .filter(record -> period.equals(record.attendancePeriod()))
-            .count();
+        outstanding +=
+            log.byStatus(status).stream()
+                .filter(record -> period.equals(record.attendancePeriod()))
+                .count();
       }
     }
 

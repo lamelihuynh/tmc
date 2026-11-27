@@ -222,8 +222,8 @@ class SyncAttendanceEventTest {
       "TODO Team D (NFR-08, AC-07): alert when records are still unconfirmed at 08:00 on the 1st")
   @Test
   void should_raise_a_deadline_alert_before_noon_on_the_first_day_of_the_month() {
-    var now = new java.util.concurrent.atomic.AtomicReference<>(
-        Instant.parse("2026-11-01T00:59:00Z"));
+    var now =
+        new java.util.concurrent.atomic.AtomicReference<>(Instant.parse("2026-11-01T00:59:00Z"));
     var check = new vn.tmc.hrintegration.application.usecase.PayrollDeadlineCheck(log, now::get);
 
     var october = java.time.YearMonth.of(2026, 10);
@@ -231,11 +231,13 @@ class SyncAttendanceEventTest {
     var octoberId = Ids.uuidV7();
     var novemberId = Ids.uuidV7();
 
-    var outstanding = new vn.tmc.hrintegration.domain.SyncRecord(
-        octoberId, SyncStatus.UNKNOWN, 1, null, now.get(), 1, octoberId, october);
+    var outstanding =
+        new vn.tmc.hrintegration.domain.SyncRecord(
+            octoberId, SyncStatus.UNKNOWN, 1, null, now.get(), 1, octoberId, october);
     log.save(outstanding);
-    log.save(new vn.tmc.hrintegration.domain.SyncRecord(
-        novemberId, SyncStatus.FAILED, 1, null, now.get(), 1, novemberId, november));
+    log.save(
+        new vn.tmc.hrintegration.domain.SyncRecord(
+            novemberId, SyncStatus.FAILED, 1, null, now.get(), 1, novemberId, november));
 
     assertThat(check.check()).isEmpty();
 

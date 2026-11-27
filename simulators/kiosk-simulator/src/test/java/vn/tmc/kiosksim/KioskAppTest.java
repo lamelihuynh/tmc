@@ -39,8 +39,7 @@ class KioskAppTest {
     SyncBundle bundle = new SyncBundle(List.of(), List.of());
 
     @Override
-    public ScanResponse scan(
-        UUID id, String gate, String token, Instant at, long seq, String kiosk)
+    public ScanResponse scan(UUID id, String gate, String token, Instant at, long seq, String kiosk)
         throws EdgeUnreachableException {
       if (!reachable) {
         throw new EdgeUnreachableException("down", null);
@@ -146,8 +145,7 @@ class KioskAppTest {
             .expirationTime(Date.from(exp))
             .build();
     var jwt =
-        new SignedJWT(
-            new JWSHeader.Builder(JWSAlgorithm.ES256).keyID(deviceId).build(), claims);
+        new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.ES256).keyID(deviceId).build(), claims);
     jwt.sign(new ECDSASigner((ECPrivateKey) phoneKeys.getPrivate()));
     return jwt.serialize();
   }
@@ -235,7 +233,8 @@ class KioskAppTest {
           @Override
           public ScanResponse scan(UUID id, String g, String t, Instant at, long seq, String k) {
             scanAttemptIds.add(id);
-            return new ScanResponse(id, calls++ < 2 ? "IN_PROGRESS" : "ALLOWED", null, "ENTRY", calls > 1);
+            return new ScanResponse(
+                id, calls++ < 2 ? "IN_PROGRESS" : "ALLOWED", null, "ENTRY", calls > 1);
           }
         };
     var app =

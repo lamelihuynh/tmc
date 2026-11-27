@@ -34,16 +34,19 @@ public class PayrollDeadlineConfig {
 
     @Scheduled(cron = "0 0 8,12 1 * *", zone = PayrollDeadlineCheck.ZONE)
     public void run() {
-      check.check().ifPresent(alert -> {
-        var message =
-            "HR payroll deadline level={} period={} outstanding={} recipients=HR_STAFF,SYSTEM_ADMIN";
+      check
+          .check()
+          .ifPresent(
+              alert -> {
+                var message =
+                    "HR payroll deadline level={} period={} outstanding={} recipients=HR_STAFF,SYSTEM_ADMIN";
 
-        if (alert.level() == PayrollDeadlineCheck.Level.OVERDUE) {
-          LOG.error(message, alert.level(), alert.period(), alert.outstanding());
-        } else {
-          LOG.warn(message, alert.level(), alert.period(), alert.outstanding());
-        }
-      });
+                if (alert.level() == PayrollDeadlineCheck.Level.OVERDUE) {
+                  LOG.error(message, alert.level(), alert.period(), alert.outstanding());
+                } else {
+                  LOG.warn(message, alert.level(), alert.period(), alert.outstanding());
+                }
+              });
     }
   }
 }
