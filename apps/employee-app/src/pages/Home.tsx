@@ -6,6 +6,7 @@ import {
   type Session,
   describeReason,
   loadGates,
+  SessionExpiredError,
   registerDevice,
   revokeDevice,
   submitScan,
@@ -80,6 +81,7 @@ export default function Home({ session, onLogout }: { session: Session; onLogout
       await saveDevice(stored)
       setDevice(stored)
     } catch (e) {
+      if (e instanceof SessionExpiredError) return onLogout()
       setError(e instanceof Error ? e.message : 'Không đăng ký được thiết bị.')
     } finally {
       setBusy(false)
@@ -95,6 +97,7 @@ export default function Home({ session, onLogout }: { session: Session; onLogout
       await forgetDevice(session.subject)
       setDevice(null)
     } catch (e) {
+      if (e instanceof SessionExpiredError) return onLogout()
       setError(e instanceof Error ? e.message : 'Không thu hồi được thiết bị.')
     } finally {
       setBusy(false)

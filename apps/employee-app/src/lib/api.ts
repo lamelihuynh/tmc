@@ -1,13 +1,29 @@
 // HTTP calls of the employee app. Every path goes through the Vite proxy (see vite.config.ts).
 //
-// DEV-ONLY identity: identity does not issue a JWT yet (Team C, story C-04). Until then the login
-// answer tells the app who it is, and the app sends that back as X-Subject / X-Roles, the same
-// headers the web portal's dev bar and device-simulator use. In production the gateway sets them.
+// Identity (D-13): the login answer carries an ES256 access token (15 minutes, no refresh token),
+// sent as Authorization: Bearer to user-qr. A session saved before 27/11 has no token; it then falls
+// back to X-Subject / X-Roles, which only the local profile accepts.
 
 export interface Session {
   username: string
   subject: string
   roles: string[]
+  accessToken?: string
+  /** ISO-8601 instant after which the token is refused. */
+  expiresAt?: string
+}
+
+/** The token was refused or has run out: the employee must sign in again. */
+export class SessionExpiredError extends Error {
+  constructor() {
+    super('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.')
+  }
+}
+
+export function isExpired(session: Session, now: Date = new Date()): boolean {
+  if (!session.expiresAt) return false
+  const expires = Date.parse(session.expiresAt)
+  return Number.isNaN(expires) || expires <= now.getTime()
 }
 
 const SESSION_KEY = 'tmc.employee.session'
@@ -15,7 +31,9 @@ const SESSION_KEY = 'tmc.employee.session'
 export function loadSession(): Session | null {
   try {
     const raw = sessionStorage.getItem(SESSION_KEY)
-    return raw ? (JSON.parse(raw) as Session) : null
+    if (!raw) return null
+    const session = JSON.parse(raw) as Session
+    return isExpired(session) ? null : session
   } catch {
     return null
   }
@@ -50,6 +68,9 @@ export async function login(username: string, password: string): Promise<LoginRe
     status?: string
     subject?: string
     roles?: string[]
+    accessToken?: string
+    expiresAt?: string
+    expiresIn?: number
   } | null
   if (!body?.status) return { ok: false, status: 'UNREACHABLE' }
   if (body.status !== 'GRANTED' || !body.subject) {
@@ -57,20 +78,33 @@ export async function login(username: string, password: string): Promise<LoginRe
   }
   const roles = body.roles ?? []
   if (!roles.includes('EMPLOYEE')) return { ok: false, status: 'NOT_EMPLOYEE' }
-  return { ok: true, session: { username, subject: body.subject, roles } }
+  const expiresAt =
+    body.expiresAt ??
+    (body.accessToken
+      ? new Date(Date.now() + (body.expiresIn ?? 900) * 1000).toISOString()
+      : undefined)
+  return {
+    ok: true,
+    session: { username, subject: body.subject, roles, accessToken: body.accessToken, expiresAt },
+  }
 }
 
-function identityHeaders(session: Session): Record<string, string> {
-  return { 'X-Subject': session.subject, 'X-Roles': 'EMPLOYEE' }
+/** Bearer token when the session has one; otherwise the development headers. */
+export function authHeaders(session: Session): Record<string, string> {
+  if (isExpired(session)) throw new SessionExpiredError()
+  return session.accessToken
+    ? { Authorization: `Bearer ${session.accessToken}` }
+    : { 'X-Subject': session.subject, 'X-Roles': 'EMPLOYEE' }
 }
 
 /** POST /self-service/v1/devices (user-qr). Registering replaces the employee's previous device. */
 export async function registerDevice(session: Session, publicKeyBase64: string): Promise<string> {
   const response = await fetch('/self-service/v1/devices', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...identityHeaders(session) },
+    headers: { 'Content-Type': 'application/json', ...authHeaders(session) },
     body: JSON.stringify({ publicKey: publicKeyBase64 }),
   })
+  if (response.status === 401) throw new SessionExpiredError()
   if (response.status !== 201)
     throw new Error(`Đăng ký thiết bị thất bại (HTTP ${response.status})`)
   return ((await response.json()) as { deviceId: string }).deviceId
@@ -80,8 +114,9 @@ export async function registerDevice(session: Session, publicKeyBase64: string):
 export async function revokeDevice(session: Session, deviceId: string): Promise<void> {
   const response = await fetch(`/self-service/v1/devices/${encodeURIComponent(deviceId)}`, {
     method: 'DELETE',
-    headers: identityHeaders(session),
+    headers: authHeaders(session),
   })
+  if (response.status === 401) throw new SessionExpiredError()
   // 403 also covers "the server no longer knows this device" (its registry was restarted)
   if (response.status !== 204 && response.status !== 403) {
     throw new Error(`Thu hồi thiết bị thất bại (HTTP ${response.status})`)

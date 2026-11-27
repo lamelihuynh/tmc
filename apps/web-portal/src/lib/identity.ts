@@ -1,5 +1,5 @@
-// DEV-ONLY identity. In production the API Gateway validates the JWT issued by the Identity service and
-// injects these headers; the browser never sets them. TODO Team D/C: real login page against /auth/v1/login.
+// DEV-ONLY identity, used while nobody is signed in (see session.ts for the real login, D-13). The services
+// accept these headers only on the local profile; on the default profile they answer 401.
 export type Role =
   | 'EMPLOYEE'
   | 'PRODUCTION_SUPERVISOR'

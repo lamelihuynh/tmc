@@ -173,7 +173,9 @@ npm run dev:lan      # in ra địa chỉ dạng https://192.168.x.x:5174
 
 ### 5.6. Giới hạn cần biết
 
-- identity đã cấp JWT (`accessToken`), nhưng app vẫn gửi `subject` qua header `X-Subject`, giống `web-portal` và `device-simulator`. Ở profile `local` user-qr còn tin header này; ở profile mặc định thì không. Chuyển app và portal sang Bearer là story D-13.
+- Từ 27/11 (D-13) app và portal gửi `Authorization: Bearer <accessToken>` lấy từ lần đăng nhập. Token sống 15 phút và không có refresh token: hết hạn thì app và portal quay về trang đăng nhập. Portal chưa đăng nhập vẫn dùng thanh danh tính DEV (header `X-Subject`), chỉ được nhận ở profile `local`. `device-simulator` vẫn dùng header dev.
+- identity chưa có tài khoản bảo vệ: tài khoản không mang phạm vi cổng (claim `gates`), nên trang **Bảo vệ: cổng** của portal chỉ dùng được bằng thanh DEV trên profile `local`.
+- `admin1` và `hr1` cần mã TOTP 6 số. Secret dev chỉ được nạp ở profile `local` và `inmem` (C-05); ở profile mặc định hai tài khoản này không đăng nhập được.
 - Ở profile `local`, `user-qr` lưu thiết bị trong bộ nhớ. Khởi động lại stack thì server quên thiết bị, cổng trả `DEVICE_UNKNOWN`; app sẽ hiện nút **Đăng ký lại thiết bị**.
 - Đồng hồ của điện thoại lệch quá 60 giây so với máy chủ thì bị `CLOCK_SKEW_EXCEEDED` hoặc `QR_EXPIRED`.
 

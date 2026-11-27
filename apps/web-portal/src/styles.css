@@ -89,3 +89,14 @@ td {
     width: 100%;
   }
 }
+.session-bar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 0.9rem;
+}
+.login {
+  display: flex;
+  flex-direction: column;
+  max-width: 320px;
+}
