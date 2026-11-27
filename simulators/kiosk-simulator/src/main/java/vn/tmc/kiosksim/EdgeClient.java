@@ -31,11 +31,23 @@ public interface EdgeClient {
 
   record Employee(UUID employeeUuid, String status, List<String> factories) {}
 
+  /**
+   * @param employees null if the edge does not send the directory (older edge)
+   * @param generatedAt the edge's time of the bundle, the cursor of the next sync; null if absent
+   */
   record SyncBundle(
-      List<Journal.Gate> gates, List<Journal.DeviceKey> deviceKeys, List<Employee> employees) {
+      List<Journal.Gate> gates,
+      List<Journal.DeviceKey> deviceKeys,
+      List<Employee> employees,
+      Instant generatedAt) {
+
+    public SyncBundle(
+        List<Journal.Gate> gates, List<Journal.DeviceKey> deviceKeys, List<Employee> employees) {
+      this(gates, deviceKeys, employees, null);
+    }
 
     public SyncBundle(List<Journal.Gate> gates, List<Journal.DeviceKey> deviceKeys) {
-      this(gates, deviceKeys, null);
+      this(gates, deviceKeys, null, null);
     }
   }
 

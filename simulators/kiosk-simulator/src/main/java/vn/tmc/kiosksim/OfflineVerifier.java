@@ -109,7 +109,8 @@ public class OfflineVerifier {
       return verdict;
     }
 
-    if (journal.gate(gateId).isEmpty()) {
+    var gate = journal.gate(gateId).orElse(null);
+    if (gate == null) {
       return Verdict.denied("GATE_NOT_FOUND");
     }
     if (!journal.hasEmployeeDirectory()) {
@@ -121,8 +122,8 @@ public class OfflineVerifier {
       return Verdict.denied("EMPLOYEE_INACTIVE");
     }
 
-    int separator = gateId.indexOf('-');
-    if (separator <= 0 || !employee.factories().contains(gateId.substring(0, separator))) {
+    var factory = gate.factory();
+    if (factory == null || !employee.factories().contains(factory)) {
       return Verdict.denied("FACTORY_NOT_PERMITTED");
     }
 

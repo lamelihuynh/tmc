@@ -191,14 +191,23 @@ public class KioskApp {
     return new Result(attemptId, "ALLOWED", null, direction, true);
   }
 
-  /** Pulls device keys, revocations and the gate catalog so offline checks stay current. */
+  /**
+   * Pulls device keys, revocations, the gate catalog and the employee directory so offline checks
+   * stay current. Until the kiosk holds a complete employee directory it asks for everything (since
+   * EPOCH), so a kiosk upgraded from a version without the directory does not start denying people
+   * it has never been sent. The cursor for the next sync is the edge's generatedAt, not the kiosk
+   * clock, so a kiosk clock running ahead cannot skip changes.
+   */
   public void sync() throws EdgeClient.EdgeUnreachableException {
-    var since = journal.meta("last_sync").map(Instant::parse).orElse(Instant.EPOCH);
+    boolean full = !journal.hasEmployeeDirectory();
+    var since =
+        full ? Instant.EPOCH : journal.meta("last_sync").map(Instant::parse).orElse(Instant.EPOCH);
     var bundle = edge.sync(since);
     bundle.gates().forEach(journal::saveGate);
     bundle.deviceKeys().forEach(journal::saveDeviceKey);
-    journal.saveEmployees(bundle.employees());
-    journal.setMeta("last_sync", clock.now().toString());
+    journal.saveEmployees(bundle.employees(), since.equals(Instant.EPOCH));
+    var cursor = bundle.generatedAt() != null ? bundle.generatedAt() : clock.now();
+    journal.setMeta("last_sync", cursor.toString());
   }
 
   /**

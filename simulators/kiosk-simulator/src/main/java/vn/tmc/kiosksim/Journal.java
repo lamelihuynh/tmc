@@ -34,7 +34,24 @@ public class Journal implements AutoCloseable {
   public record DeviceKey(
       String deviceId, String employeeUuid, String publicKeyBase64, boolean revoked) {}
 
-  public record Gate(String gateId, String mode) {}
+  /**
+   * @param factoryCode from the sync bundle; null for a gate stored before 27/11, in which case the
+   *     factory is taken from the gate-id prefix ({@code BD-GATE-01})
+   */
+  public record Gate(String gateId, String mode, String factoryCode) {
+    public Gate(String gateId, String mode) {
+      this(gateId, mode, null);
+    }
+
+    /** The factory this gate belongs to, or null if it cannot be told. */
+    public String factory() {
+      if (factoryCode != null && !factoryCode.isBlank()) {
+        return factoryCode;
+      }
+      int separator = gateId.indexOf('-');
+      return separator > 0 ? gateId.substring(0, separator) : null;
+    }
+  }
 
   private final Connection db;
 
@@ -61,8 +78,24 @@ public class Journal implements AutoCloseable {
                 + " PRIMARY KEY (employee_uuid, factory_code))");
         st.execute("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)");
       }
+      addColumnIfMissing("gates", "factory_code", "TEXT");
     } catch (SQLException e) {
       throw new IllegalStateException("cannot open journal " + sqlitePath, e);
+    }
+  }
+
+  /** Upgrades a kiosk database created by an older version in place. */
+  private void addColumnIfMissing(String table, String column, String type) throws SQLException {
+    try (var st = db.createStatement();
+        var rs = st.executeQuery("PRAGMA table_info(" + table + ")")) {
+      while (rs.next()) {
+        if (column.equalsIgnoreCase(rs.getString("name"))) {
+          return;
+        }
+      }
+    }
+    try (var st = db.createStatement()) {
+      st.execute("ALTER TABLE " + table + " ADD COLUMN " + column + " " + type);
     }
   }
 
@@ -237,9 +270,12 @@ public class Journal implements AutoCloseable {
   public synchronized void saveGate(Gate gate) {
     try (var ps =
         db.prepareStatement(
-            "INSERT INTO gates (gate_id, mode) VALUES (?,?) ON CONFLICT(gate_id) DO UPDATE SET mode = excluded.mode")) {
+            "INSERT INTO gates (gate_id, mode, factory_code) VALUES (?,?,?) ON CONFLICT(gate_id)"
+                + " DO UPDATE SET mode = excluded.mode,"
+                + " factory_code = COALESCE(excluded.factory_code, gates.factory_code)")) {
       ps.setString(1, gate.gateId());
       ps.setString(2, gate.mode());
+      ps.setString(3, gate.factoryCode());
       ps.executeUpdate();
     } catch (SQLException e) {
       throw new IllegalStateException(e);
@@ -251,7 +287,9 @@ public class Journal implements AutoCloseable {
       ps.setString(1, gateId);
       try (var rs = ps.executeQuery()) {
         return rs.next()
-            ? Optional.of(new Gate(rs.getString("gate_id"), rs.getString("mode")))
+            ? Optional.of(
+                new Gate(
+                    rs.getString("gate_id"), rs.getString("mode"), rs.getString("factory_code")))
             : Optional.empty();
       }
     } catch (SQLException e) {
@@ -259,7 +297,14 @@ public class Journal implements AutoCloseable {
     }
   }
 
-  public synchronized void saveEmployees(List<EdgeClient.Employee> employees) {
+  /**
+   * Upserts the employees of a sync bundle.
+   *
+   * @param complete true if the bundle holds the whole directory (a sync since EPOCH). Only then is
+   *     the directory marked as present, so offline checks never deny someone merely because an
+   *     incremental bundle did not list them.
+   */
+  public synchronized void saveEmployees(List<EdgeClient.Employee> employees, boolean complete) {
     if (employees == null) {
       return;
     }
@@ -295,7 +340,9 @@ public class Journal implements AutoCloseable {
           }
         }
 
-        setMeta("employee_directory_synced", "true");
+        if (complete) {
+          setMeta("employee_directory_synced", "true");
+        }
         tx.execute("COMMIT");
       } catch (SQLException | RuntimeException error) {
         try {

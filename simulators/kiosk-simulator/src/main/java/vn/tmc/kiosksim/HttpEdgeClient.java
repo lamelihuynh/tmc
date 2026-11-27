@@ -42,7 +42,7 @@ public class HttpEdgeClient implements EdgeClient {
       boolean duplicate) {}
 
   @JsonIgnoreProperties(ignoreUnknown = true)
-  record GateDto(String gateId, String mode) {}
+  record GateDto(String gateId, String mode, String factoryCode) {}
 
   @JsonIgnoreProperties(ignoreUnknown = true)
   record KeyDto(
@@ -52,7 +52,11 @@ public class HttpEdgeClient implements EdgeClient {
   record EmployeeDto(UUID employeeUuid, String status, List<String> factories) {}
 
   @JsonIgnoreProperties(ignoreUnknown = true)
-  record BundleDto(List<GateDto> gates, List<KeyDto> deviceKeys, List<EmployeeDto> employees) {}
+  record BundleDto(
+      List<GateDto> gates,
+      List<KeyDto> deviceKeys,
+      List<EmployeeDto> employees,
+      String generatedAt) {}
 
   @Override
   public ScanResponse scan(
@@ -102,7 +106,9 @@ public class HttpEdgeClient implements EdgeClient {
       return new SyncBundle(
           dto.gates() == null
               ? List.of()
-              : dto.gates().stream().map(g -> new Journal.Gate(g.gateId(), g.mode())).toList(),
+              : dto.gates().stream()
+                  .map(g -> new Journal.Gate(g.gateId(), g.mode(), g.factoryCode()))
+                  .toList(),
           dto.deviceKeys() == null
               ? List.of()
               : dto.deviceKeys().stream()
@@ -114,8 +120,14 @@ public class HttpEdgeClient implements EdgeClient {
           dto.employees() == null
               ? null
               : dto.employees().stream()
-                  .map(e -> new EdgeClient.Employee(e.employeeUuid(), e.status(), e.factories()))
-                  .toList());
+                  .map(
+                      e ->
+                          new EdgeClient.Employee(
+                              e.employeeUuid(),
+                              e.status(),
+                              e.factories() == null ? List.of() : e.factories()))
+                  .toList(),
+          dto.generatedAt() == null ? null : Instant.parse(dto.generatedAt()));
     } catch (IOException e) {
       throw new EdgeUnreachableException("unreadable sync bundle", e);
     }

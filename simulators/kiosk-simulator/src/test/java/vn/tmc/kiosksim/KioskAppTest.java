@@ -38,6 +38,11 @@ class KioskAppTest {
     final List<OfflineLine> batches = new ArrayList<>();
     SyncBundle bundle = new SyncBundle(List.of(), List.of());
 
+    /** Answer for a sync since EPOCH; null means the same as {@link #bundle}. */
+    SyncBundle fullBundle;
+
+    final List<Instant> syncSince = new ArrayList<>();
+
     @Override
     public ScanResponse scan(UUID id, String gate, String token, Instant at, long seq, String kiosk)
         throws EdgeUnreachableException {
@@ -56,7 +61,8 @@ class KioskAppTest {
       if (!reachable) {
         throw new EdgeUnreachableException("down", null);
       }
-      return bundle;
+      syncSince.add(since);
+      return Instant.EPOCH.equals(since) && fullBundle != null ? fullBundle : bundle;
     }
 
     @Override
@@ -487,6 +493,7 @@ class KioskAppTest {
     assertThat(edge.batches)
         .extracting(EdgeClient.OfflineLine::attemptId)
         .containsExactly(a.attemptId(), b.attemptId());
+    assertThat(edge.batches).extracting(EdgeClient.OfflineLine::journalSeq).isSorted();
     assertThat(journal.pendingOfflineHandover()).isEmpty();
   }
 
@@ -540,6 +547,88 @@ class KioskAppTest {
 
       assertThat(other.deviceKey("dev-9")).isPresent();
       assertThat(other.gate("BD-GATE-01")).isPresent();
+    }
+  }
+
+  @Test
+  void should_fetch_the_whole_directory_when_an_upgraded_kiosk_has_none_yet() throws Exception {
+    // a kiosk that synced before the directory existed: it has a cursor but no directory
+    journal.setMeta("last_sync", clock.now().minusSeconds(3600).toString());
+    edge.bundle = new EdgeClient.SyncBundle(List.of(), List.of(), List.of()); // nothing changed
+    edge.fullBundle =
+        new EdgeClient.SyncBundle(
+            List.of(),
+            List.of(),
+            List.of(new EdgeClient.Employee(employee, "ACTIVE", List.of("BD"))));
+
+    kiosk.sync();
+    edge.reachable = false;
+    var result = kiosk.scan(fresh("upgrade"), "BD-GATE-01");
+
+    assertThat(edge.syncSince).containsExactly(Instant.EPOCH);
+    assertThat(journal.hasEmployeeDirectory()).isTrue();
+    assertThat(result.outcome()).isEqualTo("ALLOWED");
+  }
+
+  @Test
+  void should_mark_the_directory_present_only_after_a_complete_bundle() throws Exception {
+    try (var other = new Journal(dir.resolve("incremental.db").toString())) {
+      other.saveEmployees(
+          List.of(new EdgeClient.Employee(employee, "ACTIVE", List.of("BD"))), false);
+      assertThat(other.hasEmployeeDirectory()).isFalse();
+
+      other.saveEmployees(List.of(), true);
+      assertThat(other.hasEmployeeDirectory()).isTrue();
+    }
+  }
+
+  @Test
+  void should_use_the_edge_time_as_the_next_sync_cursor() throws Exception {
+    var generatedAt = Instant.parse("2026-11-27T03:00:00Z");
+    edge.bundle =
+        new EdgeClient.SyncBundle(
+            List.of(),
+            List.of(),
+            List.of(new EdgeClient.Employee(employee, "ACTIVE", List.of("BD"))),
+            generatedAt);
+
+    kiosk.sync();
+    kiosk.sync();
+
+    assertThat(edge.syncSince).containsExactly(Instant.EPOCH, generatedAt);
+  }
+
+  @Test
+  void should_take_the_factory_of_a_gate_from_the_bundle_not_its_name() throws Exception {
+    edge.bundle =
+        new EdgeClient.SyncBundle(
+            List.of(new Journal.Gate("NORTH-1", "ENTRY_ONLY", "BD")),
+            List.of(),
+            List.of(new EdgeClient.Employee(employee, "ACTIVE", List.of("BD"))));
+    kiosk.sync();
+    edge.reachable = false;
+
+    var result = kiosk.scan(fresh("named-gate"), "NORTH-1");
+
+    assertThat(result.outcome()).isEqualTo("ALLOWED");
+    assertThat(journal.gate("NORTH-1").orElseThrow().factoryCode()).isEqualTo("BD");
+  }
+
+  @Test
+  void should_add_the_factory_column_to_a_journal_from_an_older_version() throws Exception {
+    var path = dir.resolve("old.db").toString();
+    try (var c = java.sql.DriverManager.getConnection("jdbc:sqlite:" + path);
+        var st = c.createStatement()) {
+      st.execute("CREATE TABLE gates (gate_id TEXT PRIMARY KEY, mode TEXT NOT NULL)");
+      st.execute("INSERT INTO gates VALUES ('LA-GATE-02', 'BIDIRECTIONAL')");
+    }
+
+    try (var upgraded = new Journal(path)) {
+      var gate = upgraded.gate("LA-GATE-02").orElseThrow();
+      assertThat(gate.factoryCode()).isNull();
+      assertThat(gate.factory()).isEqualTo("LA");
+      upgraded.saveGate(new Journal.Gate("LA-GATE-02", "ENTRY_ONLY", "LA"));
+      assertThat(upgraded.gate("LA-GATE-02").orElseThrow().factoryCode()).isEqualTo("LA");
     }
   }
 }
