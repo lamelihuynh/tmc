@@ -177,7 +177,7 @@ Bốn lớp chống dùng lại:
 | R1 | Giữ chỗ `jti` nguyên tử (`SET NX`) | `ITokenReservation` của gate-station | Có; bản Redis đã kiểm bằng `RedisAdaptersIT` (còn test khởi động lại, A-01) |
 | R2 | Bộ nhớ đệm `jti` tại kiosk khi mất mạng | `kiosk-simulator` | Có |
 | R3 | Phát hiện cùng `jti` ở hai kiosk khi nhập lô offline | `IngestOfflineBatchUseCase` | Có |
-| R4 | Quy tắc gian lận (ví dụ BD rồi LA cách 10 phút) | `FraudRule` của reporting | Mới có interface (D-05, 16/11) |
+| R4 | Quy tắc gian lận (ví dụ BD rồi LA cách 10 phút) | `ImpossibleTravelRule` của reporting, cảnh báo ở `GET /supervision/v1/alerts` | Có luật di chuyển bất khả thi (D-05, 27/11); chưa có luật lặp từ chối |
 
 ## 6. Sự kiện giữa biên và trung tâm
 

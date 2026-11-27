@@ -19,4 +19,7 @@ public interface IPresenceRepository {
 
   /** The latest scan of every employee seen in that factory. */
   List<Presence> byFactory(String factoryCode);
+
+  /** The employee's latest scan in every factory where they were seen. */
+  List<Presence> latestPerFactory(UUID employeeUuid);
 }

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -17,13 +18,18 @@ import vn.tmc.platform.security.AccessDeniedException;
 import vn.tmc.platform.security.DataScope;
 import vn.tmc.platform.security.Principal;
 import vn.tmc.platform.security.Role;
+import vn.tmc.reporting.adapter.out.inmem.InMemoryFraudAlertStore;
 import vn.tmc.reporting.adapter.out.inmem.InMemoryPresenceRepository;
 import vn.tmc.reporting.application.usecase.ProjectAttendanceEventUseCase;
 import vn.tmc.reporting.application.usecase.ReportingQueryService;
+import vn.tmc.reporting.domain.ImpossibleTravelRule;
 
 class ProjectionTest {
   private final InMemoryPresenceRepository repo = new InMemoryPresenceRepository();
-  private final ProjectAttendanceEventUseCase projection = new ProjectAttendanceEventUseCase(repo);
+  private final InMemoryFraudAlertStore alerts = new InMemoryFraudAlertStore();
+  private final ProjectAttendanceEventUseCase projection =
+      new ProjectAttendanceEventUseCase(
+          repo, List.of(new ImpossibleTravelRule(ImpossibleTravelRule.DEFAULT_WINDOW)), alerts);
   private final UUID employee = UUID.randomUUID();
 
   private EventEnvelope confirmed(String direction, long version, String at) {
@@ -49,7 +55,7 @@ class ProjectionTest {
             UUID.randomUUID(),
             Set.of(Role.PRODUCTION_SUPERVISOR),
             new DataScope(Set.of("BD"), Set.of(), Set.of(), false));
-    var query = new ReportingQueryService(repo);
+    var query = new ReportingQueryService(repo, alerts);
     assertThat(query.whoIsInside(supervisor, "BD")).hasSize(1);
 
     projection.handle(confirmed("EXIT", 2, "2026-11-09T14:45:00Z"));
@@ -118,7 +124,7 @@ class ProjectionTest {
 
   @Test
   void should_forbid_reading_another_factory_or_with_the_wrong_role() {
-    var query = new ReportingQueryService(repo);
+    var query = new ReportingQueryService(repo, alerts);
     var bdSupervisor =
         new Principal(
             UUID.randomUUID(),
@@ -132,10 +138,60 @@ class ProjectionTest {
         .isInstanceOf(AccessDeniedException.class);
   }
 
-  @Disabled(
-      "TODO Team D (ADR-12 test 8): ImpossibleTravelRule flags BD then LA within the travel window")
+  private EventEnvelope entryAt(String factory, String scannedAt) {
+    return new EventEnvelope(
+        Ids.uuidV7(),
+        "AttendanceConfirmed",
+        1,
+        Ids.uuidV7(),
+        5,
+        Instant.parse(scannedAt),
+        "c",
+        "attendance-edge",
+        factory,
+        factory + "-GATE-01",
+        Map.of("employeeUuid", employee.toString(), "direction", "ENTRY", "scannedAt", scannedAt));
+  }
+
   @Test
-  void should_flag_two_entries_in_different_factories_ten_minutes_apart() {}
+  void should_flag_two_entries_in_different_factories_ten_minutes_apart() {
+    projection.handle(entryAt("BD", "2026-11-09T06:45:00Z"));
+    var la = entryAt("LA", "2026-11-09T06:55:00Z");
+    projection.handle(la);
+
+    var hr =
+        new Principal(
+            UUID.randomUUID(),
+            Set.of(Role.HR_STAFF),
+            new DataScope(Set.of("LA"), Set.of(), Set.of(), false));
+    var found = new ReportingQueryService(repo, alerts).fraudAlerts(hr, "LA");
+
+    assertThat(found)
+        .singleElement()
+        .satisfies(
+            a -> {
+              assertThat(a.rule()).isEqualTo(ImpossibleTravelRule.NAME);
+              assertThat(a.attemptId()).isEqualTo(la.eventId());
+              assertThat(a.factoryCode()).isEqualTo("LA");
+              assertThat(a.otherFactory()).isEqualTo("BD");
+              assertThat(a.detail()).contains("10 min");
+            });
+    // flagged for review, not removed: the pass still counts in the read model
+    assertThat(repo.find(employee, "LA")).isPresent();
+    // the alert is visible from the other factory too, and only once on redelivery
+    projection.handle(la);
+    assertThat(alerts.involving("BD", 10)).hasSize(1);
+  }
+
+  @Test
+  void should_not_flag_entries_in_two_factories_further_apart_than_the_travel_time() {
+    projection.handle(entryAt("BD", "2026-11-09T06:45:00Z"));
+    projection.handle(entryAt("LA", "2026-11-09T08:45:00Z"));
+    projection.handle(entryAt("BD", "2026-11-09T06:50:00Z")); // same factory: never a finding
+
+    assertThat(alerts.involving("LA", 10)).isEmpty();
+    assertThat(alerts.involving("BD", 10)).isEmpty();
+  }
 
   @Disabled(
       "TODO Team D (FR-24, FR-28): attendance report per group/shift/factory and role-limited export")

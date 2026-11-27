@@ -21,6 +21,7 @@ import vn.tmc.platform.messaging.IdempotentConsumer;
 import vn.tmc.platform.messaging.ProcessedMessageStore;
 import vn.tmc.platform.testsupport.TmcContainers;
 import vn.tmc.reporting.adapter.out.persistence.JdbcPresenceRepository;
+import vn.tmc.reporting.application.port.out.IFraudAlertStore;
 import vn.tmc.reporting.application.port.out.IPresenceRepository;
 import vn.tmc.reporting.application.usecase.ProjectAttendanceEventUseCase;
 import vn.tmc.reporting.bootstrap.ReportingApplication;
@@ -87,6 +88,49 @@ class PresencePersistenceIT {
       assertThat(presence.get().direction()).isEqualTo("ENTRY");
       assertThat(reporting.getBean(IPresenceRepository.class).byFactory("BD"))
           .anySatisfy(p -> assertThat(p.employeeUuid()).isEqualTo(employee));
+    }
+  }
+
+  @Test
+  void should_store_an_impossible_travel_alert_once_and_keep_it_across_a_restart() {
+    var employee = UUID.randomUUID();
+    var bd = confirmed(employee, "ENTRY", "2026-11-21T06:45:00Z");
+    var la =
+        new EventEnvelope(
+            Ids.uuidV7(),
+            "AttendanceConfirmed",
+            1,
+            Ids.uuidV7(),
+            5,
+            Instant.parse("2026-11-21T06:55:00Z"),
+            "it",
+            "attendance-edge",
+            "LA",
+            "LA-GATE-01",
+            Map.of(
+                "employeeUuid",
+                employee.toString(),
+                "direction",
+                "ENTRY",
+                "scannedAt",
+                "2026-11-21T06:55:00Z"));
+    try (var reporting = startReporting()) {
+      var consumer = reporting.getBean(IdempotentConsumer.class);
+      consumer.accept(bd);
+      consumer.accept(la);
+      consumer.accept(la); // redelivery
+    }
+
+    try (var reporting = startReporting()) {
+      var alerts = reporting.getBean(IFraudAlertStore.class).involving("LA", 50);
+      assertThat(alerts)
+          .filteredOn(a -> a.employeeUuid().equals(employee))
+          .singleElement()
+          .satisfies(
+              a -> {
+                assertThat(a.attemptId()).isEqualTo(la.eventId());
+                assertThat(a.otherFactory()).isEqualTo("BD");
+              });
     }
   }
 

@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import vn.tmc.platform.security.AccessDeniedException;
 import vn.tmc.platform.security.PrincipalHeaders;
 import vn.tmc.reporting.application.port.in.IReporting;
+import vn.tmc.reporting.domain.FraudAlert;
 import vn.tmc.reporting.domain.Presence;
 
 @RestController
@@ -35,6 +36,21 @@ public class ReportingController {
       throw new AccessDeniedException("unauthenticated");
     }
     return reporting.whoIsInside(caller, factory);
+  }
+
+  /** ADR-12 R4 alerts involving a factory, for HR review (UC-09). */
+  @GetMapping("/supervision/v1/alerts")
+  public List<FraudAlert> alerts(HttpServletRequest http, @RequestParam String factory) {
+    var caller =
+        PrincipalHeaders.parse(
+            http.getHeader("X-Subject"),
+            http.getHeader("X-Roles"),
+            http.getHeader("X-Scope-Factories"),
+            http.getHeader("X-Scope-Gates"));
+    if (caller == null) {
+      throw new AccessDeniedException("unauthenticated");
+    }
+    return reporting.fraudAlerts(caller, factory);
   }
 
   @RestControllerAdvice

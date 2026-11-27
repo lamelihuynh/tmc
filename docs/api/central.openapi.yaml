@@ -33,6 +33,29 @@ paths:
                     at: { type: string, format: date-time }
                     aggregateVersion: { type: integer, format: int64 }
         "403": { description: Sai vai trò hoặc ngoài phạm vi nhà máy }
+  /supervision/v1/alerts:
+    get:
+      summary: "Cảnh báo gian lận ADR-12 R4 (D-05) liên quan tới một nhà máy, mới nhất trước, tối đa 200. Vai trò PRODUCTION_SUPERVISOR, HR_STAFF, EXECUTIVE trong phạm vi nhà máy. Lượt quét bị cảnh báo không bị xóa"
+      parameters:
+        - { name: factory, in: query, required: true, schema: { type: string }, example: LA }
+      responses:
+        "200":
+          description: Danh sách cảnh báo
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    attemptId: { type: string, format: uuid, description: "Lượt quét bị cảnh báo" }
+                    employeeUuid: { type: string, format: uuid }
+                    factoryCode: { type: string, description: "Nhà máy của lượt bị cảnh báo" }
+                    otherFactory: { type: string, description: "Nhà máy của lượt trước đó mâu thuẫn với nó" }
+                    rule: { type: string, example: IMPOSSIBLE_TRAVEL }
+                    detail: { type: string }
+                    at: { type: string, format: date-time }
+        "403": { description: Sai vai trò hoặc ngoài phạm vi nhà máy }
   /admin/v1/hr-sync:
     get:
       summary: Trạng thái đồng bộ sang HR/Payroll (FR-30). Chỉ SYSTEM_ADMIN

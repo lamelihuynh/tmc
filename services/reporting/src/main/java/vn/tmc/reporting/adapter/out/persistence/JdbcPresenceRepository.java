@@ -79,6 +79,18 @@ public class JdbcPresenceRepository implements IPresenceRepository {
         factoryCode);
   }
 
+  @Override
+  public List<Presence> latestPerFactory(UUID employeeUuid) {
+    return jdbc.query(
+        "SELECT DISTINCT ON (factory_code)"
+            + " employee_uuid, factory_code, direction, scanned_at, aggregate_version"
+            + " FROM attendance_projection WHERE employee_uuid = ?"
+            + " ORDER BY factory_code, "
+            + LATEST_FIRST,
+        JdbcPresenceRepository::presence,
+        employeeUuid);
+  }
+
   private static Presence presence(ResultSet rs, int row) throws SQLException {
     return new Presence(
         rs.getObject("employee_uuid", UUID.class),

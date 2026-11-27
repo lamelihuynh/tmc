@@ -49,4 +49,15 @@ public class InMemoryPresenceRepository implements IPresenceRepository {
         .map(list -> list.stream().sorted(LATEST_FIRST).findFirst().orElseThrow().toPresence())
         .toList();
   }
+
+  @Override
+  public List<Presence> latestPerFactory(UUID employeeUuid) {
+    return scans.values().stream()
+        .filter(s -> s.employeeUuid().equals(employeeUuid))
+        .collect(Collectors.groupingBy(ScanRecord::factoryCode))
+        .values()
+        .stream()
+        .map(list -> list.stream().sorted(LATEST_FIRST).findFirst().orElseThrow().toPresence())
+        .toList();
+  }
 }
