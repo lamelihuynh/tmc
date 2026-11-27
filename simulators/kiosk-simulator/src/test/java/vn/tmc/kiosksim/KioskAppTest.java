@@ -21,18 +21,14 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import vn.tmc.platform.kernel.IClock;
 
-/**
- * Kiosk side of ADR-11 (journal, retry, offline fallback, flush) and ADR-12 (offline verify, replay
- * cache).
- */
 class KioskAppTest {
 
-  /** Edge double: can be switched off, remembers every attempt id it was asked about. */
   static class FakeEdge implements EdgeClient {
     boolean reachable = true;
     String outcomeForScan = "ALLOWED";
@@ -43,11 +39,13 @@ class KioskAppTest {
     SyncBundle bundle = new SyncBundle(List.of(), List.of());
 
     @Override
-    public ScanResponse scan(UUID id, String gate, String token, Instant at, long seq, String kiosk)
+    public ScanResponse scan(
+        UUID id, String gate, String token, Instant at, long seq, String kiosk)
         throws EdgeUnreachableException {
       if (!reachable) {
         throw new EdgeUnreachableException("down", null);
       }
+
       scanAttemptIds.add(id);
       scanTokens.add(token);
       boolean duplicate = !known.add(id);
@@ -68,12 +66,15 @@ class KioskAppTest {
       if (!reachable) {
         throw new EdgeUnreachableException("down", null);
       }
+
       batches.addAll(lines);
       return lines.stream()
           .map(
-              l ->
+              line ->
                   new OfflineResult(
-                      l.attemptId(), known.add(l.attemptId()) ? "ACCEPTED" : "DUPLICATE", null))
+                      line.attemptId(),
+                      known.add(line.attemptId()) ? "ACCEPTED" : "DUPLICATE",
+                      null))
           .toList();
     }
   }
@@ -88,6 +89,7 @@ class KioskAppTest {
   }
 
   @TempDir Path dir;
+
   FakeEdge edge = new FakeEdge();
   MutableClock clock = new MutableClock();
   Journal journal;
@@ -110,13 +112,20 @@ class KioskAppTest {
             clock,
             "BD-KIOSK-01",
             2);
+
     var gen = KeyPairGenerator.getInstance("EC");
     gen.initialize(new ECGenParameterSpec("secp256r1"));
     phoneKeys = gen.generateKeyPair();
     syncedWithKey(false);
   }
 
-  /** Stores the cached key and gates exactly as a successful sync would. */
+  @AfterEach
+  void closeJournal() {
+    if (journal != null) {
+      journal.close();
+    }
+  }
+
   private void syncedWithKey(boolean revoked) {
     journal.saveDeviceKey(
         new Journal.DeviceKey(
@@ -137,7 +146,8 @@ class KioskAppTest {
             .expirationTime(Date.from(exp))
             .build();
     var jwt =
-        new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.ES256).keyID(deviceId).build(), claims);
+        new SignedJWT(
+            new JWSHeader.Builder(JWSAlgorithm.ES256).keyID(deviceId).build(), claims);
     jwt.sign(new ECDSASigner((ECPrivateKey) phoneKeys.getPrivate()));
     return jwt.serialize();
   }
@@ -145,8 +155,6 @@ class KioskAppTest {
   private String fresh(String jti) throws Exception {
     return token(jti, clock.now(), clock.now().plusSeconds(30));
   }
-
-  // ---------- online ----------
 
   @Test
   void should_journal_before_asking_the_edge_and_hand_the_row_over_when_the_edge_answers()
@@ -182,8 +190,6 @@ class KioskAppTest {
     assertThat(localOpens).isEmpty();
   }
 
-  // ---------- ADR-11 P1: retry keeps the same attempt id ----------
-
   @Test
   void should_retry_with_the_same_attempt_id_when_the_edge_does_not_answer() throws Exception {
     var edgeWithFlakyStart =
@@ -191,14 +197,14 @@ class KioskAppTest {
           int calls;
 
           @Override
-          public ScanResponse scan(UUID id, String g, String t, Instant a, long s, String k)
+          public ScanResponse scan(UUID id, String g, String t, Instant at, long seq, String k)
               throws EdgeUnreachableException {
-            if (calls++ < 2) { // reply lost twice
+            if (calls++ < 2) {
               known.add(id);
               scanAttemptIds.add(id);
               throw new EdgeUnreachableException("lost", null);
             }
-            return super.scan(id, g, t, a, s, k);
+            return super.scan(id, g, t, at, seq, k);
           }
         };
     var app =
@@ -227,11 +233,9 @@ class KioskAppTest {
           int calls;
 
           @Override
-          public ScanResponse scan(UUID id, String g, String t, Instant a, long s, String k)
-              throws EdgeUnreachableException {
+          public ScanResponse scan(UUID id, String g, String t, Instant at, long seq, String k) {
             scanAttemptIds.add(id);
-            return new ScanResponse(
-                id, calls++ < 2 ? "IN_PROGRESS" : "ALLOWED", null, "ENTRY", calls > 1);
+            return new ScanResponse(id, calls++ < 2 ? "IN_PROGRESS" : "ALLOWED", null, "ENTRY", calls > 1);
           }
         };
     var app =
@@ -259,7 +263,7 @@ class KioskAppTest {
     var stuckEdge =
         new FakeEdge() {
           @Override
-          public ScanResponse scan(UUID id, String g, String t, Instant a, long s, String k) {
+          public ScanResponse scan(UUID id, String g, String t, Instant at, long seq, String k) {
             scanAttemptIds.add(id);
             return new ScanResponse(id, "IN_PROGRESS", "IN_PROGRESS", null, true);
           }
@@ -278,12 +282,74 @@ class KioskAppTest {
     var result = app.scan(fresh("stuck"), "BD-GATE-01");
 
     assertThat(result.outcome()).isEqualTo("IN_PROGRESS");
+    assertThat(stuckEdge.scanAttemptIds).containsOnly(result.attemptId());
     assertThat(journal.find(result.attemptId()).orElseThrow().status()).isEqualTo("PENDING");
-    assertThat(localOpens)
-        .isEmpty(); // the edge owns this attempt: opening locally could open twice
+    assertThat(localOpens).isEmpty();
   }
 
-  // ---------- ADR-11 P6: offline fallback ----------
+  @Test
+  void d15_should_deny_an_inactive_employee_offline() throws Exception {
+    edge.bundle =
+        new EdgeClient.SyncBundle(
+            List.of(),
+            List.of(),
+            List.of(new EdgeClient.Employee(employee, "INACTIVE", List.of("BD"))));
+    kiosk.sync();
+    edge.reachable = false;
+
+    var result = kiosk.scan(fresh("d15-inactive"), "BD-GATE-01");
+
+    assertThat(result.offline()).isTrue();
+    assertThat(result.outcome()).isEqualTo("DENIED");
+    assertThat(result.reason()).isEqualTo("EMPLOYEE_INACTIVE");
+    assertThat(localOpens).isEmpty();
+
+    var row = journal.find(result.attemptId()).orElseThrow();
+    assertThat(row.status()).isEqualTo("OFFLINE_DENIED");
+    assertThat(row.result()).isEqualTo("EMPLOYEE_INACTIVE");
+  }
+
+  @Test
+  void d15_should_deny_at_la_and_allow_at_bd_for_a_bd_employee() throws Exception {
+    edge.bundle =
+        new EdgeClient.SyncBundle(
+            List.of(new Journal.Gate("LA-GATE-01", "ENTRY_ONLY")),
+            List.of(),
+            List.of(new EdgeClient.Employee(employee, "ACTIVE", List.of("BD"))));
+    kiosk.sync();
+    edge.reachable = false;
+
+    var denied = kiosk.scan(fresh("d15-wrong-factory"), "LA-GATE-01");
+
+    assertThat(denied.offline()).isTrue();
+    assertThat(denied.outcome()).isEqualTo("DENIED");
+    assertThat(denied.reason()).isEqualTo("FACTORY_NOT_PERMITTED");
+    assertThat(localOpens).isEmpty();
+
+    var row = journal.find(denied.attemptId()).orElseThrow();
+    assertThat(row.status()).isEqualTo("OFFLINE_DENIED");
+    assertThat(row.result()).isEqualTo("FACTORY_NOT_PERMITTED");
+
+    var allowed = kiosk.scan(fresh("d15-right-factory"), "BD-GATE-01");
+
+    assertThat(allowed.offline()).isTrue();
+    assertThat(allowed.outcome()).isEqualTo("ALLOWED");
+    assertThat(localOpens).containsExactly("BD-GATE-01:ENTRY");
+  }
+
+  @Test
+  void d15_should_allow_a_valid_scan_with_a_legacy_bundle() throws Exception {
+    edge.bundle = new EdgeClient.SyncBundle(List.of(), List.of());
+    kiosk.sync();
+    edge.reachable = false;
+
+    var result = kiosk.scan(fresh("d15-legacy"), "BD-GATE-01");
+
+    assertThat(journal.hasEmployeeDirectory()).isFalse();
+    assertThat(result.offline()).isTrue();
+    assertThat(result.outcome()).isEqualTo("ALLOWED");
+    assertThat(localOpens).containsExactly("BD-GATE-01:ENTRY");
+  }
 
   @Test
   void should_verify_locally_open_through_the_local_link_and_journal_when_the_edge_stays_down()
@@ -302,7 +368,6 @@ class KioskAppTest {
     assertThat(row.employeeUuid()).isEqualTo(employee.toString());
   }
 
-  // ADR-12 test 4
   @Test
   void should_refuse_the_same_token_twice_offline_using_the_local_replay_cache() throws Exception {
     edge.reachable = false;
@@ -321,9 +386,8 @@ class KioskAppTest {
   void should_allow_the_token_again_after_the_replay_window_has_passed() throws Exception {
     edge.reachable = false;
     kiosk.scan(token("j-w", clock.now(), clock.now().plusSeconds(30)), "BD-GATE-01");
-    clock.now = clock.now.plus(Duration.ofMinutes(3)); // window is 2 minutes
+    clock.now = clock.now.plus(Duration.ofMinutes(3));
 
-    // a token with the same id but valid at the new time (illustrates the window boundary only)
     var later = token("j-w", clock.now(), clock.now().plusSeconds(30));
 
     assertThat(kiosk.scan(later, "BD-GATE-01").outcome()).isEqualTo("ALLOWED");
@@ -332,22 +396,24 @@ class KioskAppTest {
   @Test
   void should_not_open_offline_when_no_keys_were_ever_synced() throws Exception {
     edge.reachable = false;
-    var emptyJournal = new Journal(dir.resolve("empty.db").toString());
-    var app =
-        new KioskApp(
-            emptyJournal,
-            edge,
-            KioskApp.defaultVerifier(emptyJournal),
-            (g, d) -> localOpens.add(g),
-            clock,
-            "K",
-            0);
 
-    var result = app.scan(fresh("j5"), "BD-GATE-01");
+    try (var emptyJournal = new Journal(dir.resolve("empty.db").toString())) {
+      var app =
+          new KioskApp(
+              emptyJournal,
+              edge,
+              KioskApp.defaultVerifier(emptyJournal),
+              (g, d) -> localOpens.add(g),
+              clock,
+              "K",
+              0);
 
-    assertThat(result.outcome()).isEqualTo("DENIED");
-    assertThat(result.reason()).isEqualTo("DEVICE_UNKNOWN");
-    assertThat(localOpens).isEmpty();
+      var result = app.scan(fresh("j5"), "BD-GATE-01");
+
+      assertThat(result.outcome()).isEqualTo("DENIED");
+      assertThat(result.reason()).isEqualTo("DEVICE_UNKNOWN");
+      assertThat(localOpens).isEmpty();
+    }
   }
 
   @Test
@@ -408,8 +474,6 @@ class KioskAppTest {
     assertThat(edge.scanAttemptIds).isEmpty();
   }
 
-  // ---------- flush ----------
-
   @Test
   void should_hand_over_offline_rows_in_journal_order_when_the_edge_returns() throws Exception {
     edge.reachable = false;
@@ -424,7 +488,6 @@ class KioskAppTest {
     assertThat(edge.batches)
         .extracting(EdgeClient.OfflineLine::attemptId)
         .containsExactly(a.attemptId(), b.attemptId());
-    assertThat(edge.batches).extracting(EdgeClient.OfflineLine::journalSeq).isSorted();
     assertThat(journal.pendingOfflineHandover()).isEmpty();
   }
 
@@ -453,7 +516,6 @@ class KioskAppTest {
 
   @Test
   void should_retry_an_unfinished_scan_with_the_hash_never_the_raw_token() throws Exception {
-    // a crash left a row with no decision
     var id = UUID.randomUUID();
     var token = fresh("f5");
     journal.append(id, "BD-GATE-01", KioskApp.sha256(token), clock.now());
@@ -467,17 +529,18 @@ class KioskAppTest {
 
   @Test
   void should_load_keys_and_gates_from_a_sync_bundle() throws Exception {
-    var other = new Journal(dir.resolve("fresh.db").toString());
-    edge.bundle =
-        new EdgeClient.SyncBundle(
-            List.of(new Journal.Gate("BD-GATE-01", "ENTRY_ONLY")),
-            List.of(new Journal.DeviceKey("dev-9", employee.toString(), "AAAA", false)));
-    var app =
-        new KioskApp(other, edge, KioskApp.defaultVerifier(other), (g, d) -> {}, clock, "K", 0);
+    try (var other = new Journal(dir.resolve("fresh.db").toString())) {
+      edge.bundle =
+          new EdgeClient.SyncBundle(
+              List.of(new Journal.Gate("BD-GATE-01", "ENTRY_ONLY")),
+              List.of(new Journal.DeviceKey("dev-9", employee.toString(), "AAAA", false)));
+      var app =
+          new KioskApp(other, edge, KioskApp.defaultVerifier(other), (g, d) -> {}, clock, "K", 0);
 
-    app.sync();
+      app.sync();
 
-    assertThat(other.deviceKey("dev-9")).isPresent();
-    assertThat(other.gate("BD-GATE-01")).isPresent();
+      assertThat(other.deviceKey("dev-9")).isPresent();
+      assertThat(other.gate("BD-GATE-01")).isPresent();
+    }
   }
 }

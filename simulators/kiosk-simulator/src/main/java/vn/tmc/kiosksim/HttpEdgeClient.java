@@ -49,7 +49,10 @@ public class HttpEdgeClient implements EdgeClient {
       String deviceId, String employeeUuid, String publicKeyX509Base64, boolean revoked) {}
 
   @JsonIgnoreProperties(ignoreUnknown = true)
-  record BundleDto(List<GateDto> gates, List<KeyDto> deviceKeys) {}
+  record EmployeeDto(UUID employeeUuid, String status, List<String> factories) {}
+
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  record BundleDto(List<GateDto> gates, List<KeyDto> deviceKeys, List<EmployeeDto> employees) {}
 
   @Override
   public ScanResponse scan(
@@ -107,6 +110,11 @@ public class HttpEdgeClient implements EdgeClient {
                       k ->
                           new Journal.DeviceKey(
                               k.deviceId(), k.employeeUuid(), k.publicKeyX509Base64(), k.revoked()))
+                  .toList(),
+          dto.employees() == null
+              ? null
+              : dto.employees().stream()
+                  .map(e -> new EdgeClient.Employee(e.employeeUuid(), e.status(), e.factories()))
                   .toList());
     } catch (IOException e) {
       throw new EdgeUnreachableException("unreadable sync bundle", e);
